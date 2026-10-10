@@ -35,6 +35,7 @@ engine_defs_init();
 templates_init();
 asm6502_init();
 chargen_init();
+pixel_sprite_init();
 
 // ---------- UI state ----------
 ui_mx = 0;
@@ -119,6 +120,7 @@ spr_drawing = false;
 spr_clip = "";
 spr_surf_own = array_create(SPR_COUNT, -1);
 spr_surf_sh = array_create(SPR_COUNT, -1);
+spr_surf_sh2 = array_create(SPR_COUNT, -1);
 spr_dirty = array_create(SPR_COUNT, true);
 
 // map-game editors

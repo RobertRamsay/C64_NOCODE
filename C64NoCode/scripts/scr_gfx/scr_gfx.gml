@@ -10,30 +10,25 @@ function chargen_init()
     if (_b == -1) { return; }
     global.chargen_rom = array_create(2048, 0);
     for (var k = 0; k < 2048; k++) { global.chargen_rom[k] = buffer_peek(_b, k, buffer_u8); }
-    var _surf = surface_create(128, 128);
-    surface_set_target(_surf);
-    draw_clear_alpha(c_black, 0);
-    draw_set_colour(c_white);
-    for (var c = 0; c < 256; c++)
-    {
-        var _ox = (c mod 16) * 8;
-        var _oy = (c div 16) * 8;
-        for (var r = 0; r < 8; r++)
-        {
-            var _byte = buffer_peek(_b, c * 8 + r, buffer_u8);
-            for (var bit = 0; bit < 8; bit++)
-            {
-                if ((_byte & (128 >> bit)) != 0)
-                {
-                    draw_rectangle(_ox + bit, _oy + r, _ox + bit, _oy + r, false);
-                }
-            }
-        }
-    }
-    surface_reset_target();
-    global.spr_chars = sprite_create_from_surface(_surf, 0, 0, 128, 128, false, false, 0, 0);
-    surface_free(_surf);
+    var _bits = array_create(2048, 0);
+    for (var k2 = 0; k2 < 2048; k2++) { _bits[k2] = global.chargen_rom[k2]; }
+    global.spr_chars = glyph_sheet_sprite(_bits);
     buffer_delete(_b);
+}
+
+/// 1x1 white pixel sprite for exact-size filled rectangles
+function pixel_sprite_init()
+{
+    var _surf = surface_create(1, 1);
+    mask_to_surface(_surf, 1, 1, [1]);
+    global.spr_px = sprite_create_from_surface(_surf, 0, 0, 1, 1, false, false, 0, 0);
+    surface_free(_surf);
+}
+
+/// Pixel-exact filled rectangle (w x h pixels)
+function px_rect(_x, _y, _w, _h, _col)
+{
+    draw_sprite_ext(global.spr_px, 0, _x, _y, _w, _h, 0, _col, 1);
 }
 
 function draw_c64_char(_code, _x, _y, _scale, _col)
@@ -82,58 +77,77 @@ function draw_c64_screen(_x, _y, _scale, _with_border)
     return [_sx, _sy];
 }
 
+/// Writes a white/transparent mask straight into a surface (no 1-pixel draw calls,
+/// which DirectX can rasterise as nothing). _mask = array of 0/1, row-major.
+function mask_to_surface(_surf, _w, _h, _mask)
+{
+    var _buf = buffer_create(_w * _h * 4, buffer_fixed, 1);
+    for (var i = 0; i < _w * _h; i++)
+    {
+        if (_mask[i] != 0) { buffer_write(_buf, buffer_u32, $ffffffff); }
+        else { buffer_write(_buf, buffer_u32, 0); }
+    }
+    buffer_set_surface(_buf, _surf, 0);
+    buffer_delete(_buf);
+}
+
+/// 128x128 sprite of 256 white 8x8 glyphs from 2048 charset bytes
+function glyph_sheet_sprite(_bytes)
+{
+    var _mask = array_create(128 * 128, 0);
+    for (var c = 0; c < 256; c++)
+    {
+        var _ox = (c mod 16) * 8;
+        var _oy = (c div 16) * 8;
+        for (var r = 0; r < 8; r++)
+        {
+            var _b = _bytes[c * 8 + r];
+            if (_b == 0) { continue; }
+            for (var bit = 0; bit < 8; bit++)
+            {
+                if ((_b & (128 >> bit)) != 0) { _mask[(_oy + r) * 128 + _ox + bit] = 1; }
+            }
+        }
+    }
+    var _surf = surface_create(128, 128);
+    mask_to_surface(_surf, 128, 128, _mask);
+    var _spr = sprite_create_from_surface(_surf, 0, 0, 128, 128, false, false, 0, 0);
+    surface_free(_surf);
+    return _spr;
+}
+
+/// Three white masks per sprite: own colour, shared A, shared B (tinted when drawn)
 function spr_cache_update(_i)
 {
     if (!surface_exists(spr_surf_own[_i])) { spr_surf_own[_i] = surface_create(24, 21); spr_dirty[_i] = true; }
     if (!surface_exists(spr_surf_sh[_i]))  { spr_surf_sh[_i] = surface_create(24, 21);  spr_dirty[_i] = true; }
+    if (!surface_exists(spr_surf_sh2[_i])) { spr_surf_sh2[_i] = surface_create(24, 21); spr_dirty[_i] = true; }
     if (!spr_dirty[_i]) { return; }
     var _s = proj.sprites[_i];
-    surface_set_target(spr_surf_own[_i]);
-    draw_clear_alpha(c_black, 0);
-    draw_set_colour(c_white);
+    var _own = array_create(504, 0);
+    var _ma = array_create(504, 0);
+    var _mb = array_create(504, 0);
     if (_s.mc)
     {
         for (var p = 0; p < 252; p++)
         {
-            if (_s.mcp[p] == 1)
-            {
-                var _px = (p mod 12) * 2;
-                var _py = p div 12;
-                draw_rectangle(_px, _py, _px + 1, _py, false);
-            }
+            var _v = _s.mcp[p];
+            var _q = (p div 12) * 24 + (p mod 12) * 2;
+            if (_v == 1) { _own[_q] = 1; _own[_q + 1] = 1; }
+            if (_v == 2) { _ma[_q] = 1; _ma[_q + 1] = 1; }
+            if (_v == 3) { _mb[_q] = 1; _mb[_q + 1] = 1; }
         }
     }
     else
     {
         for (var q = 0; q < 504; q++)
         {
-            if (_s.hi[q] != 0)
-            {
-                draw_rectangle(q mod 24, q div 24, q mod 24, q div 24, false);
-            }
+            if (_s.hi[q] != 0) { _own[q] = 1; }
         }
     }
-    surface_reset_target();
-
-    surface_set_target(spr_surf_sh[_i]);
-    draw_clear_alpha(c_black, 0);
-    if (_s.mc)
-    {
-        for (var m = 0; m < 252; m++)
-        {
-            var _v = _s.mcp[m];
-            if (_v == 2 || _v == 3)
-            {
-                var _c = proj.mc1;
-                if (_v == 3) { _c = proj.mc2; }
-                draw_set_colour(c64col(_c));
-                var _mx = (m mod 12) * 2;
-                var _my = m div 12;
-                draw_rectangle(_mx, _my, _mx + 1, _my, false);
-            }
-        }
-    }
-    surface_reset_target();
+    mask_to_surface(spr_surf_own[_i], 24, 21, _own);
+    mask_to_surface(spr_surf_sh[_i], 24, 21, _ma);
+    mask_to_surface(spr_surf_sh2[_i], 24, 21, _mb);
     spr_dirty[_i] = false;
 }
 
@@ -142,7 +156,8 @@ function draw_sprite_c64(_i, _x, _y, _scale, _colour, _alpha)
     if (_i < 0 || _i >= SPR_COUNT) { return; }
     spr_cache_update(_i);
     gpu_set_texfilter(false);
-    draw_surface_ext(spr_surf_sh[_i], _x, _y, _scale, _scale, 0, c_white, _alpha);
+    draw_surface_ext(spr_surf_sh[_i], _x, _y, _scale, _scale, 0, c64col(proj.mc1), _alpha);
+    draw_surface_ext(spr_surf_sh2[_i], _x, _y, _scale, _scale, 0, c64col(proj.mc2), _alpha);
     draw_surface_ext(spr_surf_own[_i], _x, _y, _scale, _scale, 0, c64col(_colour), _alpha);
     gpu_set_texfilter(true);
 }
@@ -153,6 +168,7 @@ function spr_cache_free()
     {
         if (surface_exists(spr_surf_own[i])) { surface_free(spr_surf_own[i]); }
         if (surface_exists(spr_surf_sh[i])) { surface_free(spr_surf_sh[i]); }
+        if (surface_exists(spr_surf_sh2[i])) { surface_free(spr_surf_sh2[i]); }
     }
 }
 

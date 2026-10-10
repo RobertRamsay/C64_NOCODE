@@ -14,27 +14,7 @@ function pchars_refresh()
 {
     if (!charset_dirty && pchars_sprite != -1) { return; }
     if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
-    var _surf = surface_create(128, 128);
-    surface_set_target(_surf);
-    draw_clear_alpha(c_black, 0);
-    draw_set_colour(c_white);
-    for (var c = 0; c < 256; c++)
-    {
-        var _ox = (c mod 16) * 8;
-        var _oy = (c div 16) * 8;
-        for (var r = 0; r < 8; r++)
-        {
-            var _b = proj.charset[c * 8 + r];
-            if (_b == 0) { continue; }
-            for (var bit = 0; bit < 8; bit++)
-            {
-                if ((_b & (128 >> bit)) != 0) { draw_rectangle(_ox + bit, _oy + r, _ox + bit, _oy + r, false); }
-            }
-        }
-    }
-    surface_reset_target();
-    pchars_sprite = sprite_create_from_surface(_surf, 0, 0, 128, 128, false, false, 0, 0);
-    surface_free(_surf);
+    pchars_sprite = glyph_sheet_sprite(proj.charset);
     charset_dirty = false;
     atlas_dirty = true;
 }
@@ -53,8 +33,7 @@ function draw_pchar(_code, _x, _y, _scale, _col, _mc)
                 var _v = (_b >> (6 - p * 2)) & 3;
                 if (_v != 0)
                 {
-                    draw_set_colour(c64col(_cols[_v]));
-                    draw_rectangle(_x + p * 2 * _scale, _y + r * _scale, _x + (p * 2 + 2) * _scale - 1, _y + (r + 1) * _scale - 1, false);
+                    px_rect(_x + p * 2 * _scale, _y + r * _scale, 2 * _scale, _scale, c64col(_cols[_v]));
                 }
             }
         }

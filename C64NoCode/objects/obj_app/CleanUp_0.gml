@@ -11,4 +11,5 @@ if (global.spr_chars != -1 && sprite_exists(global.spr_chars))
 {
     sprite_delete(global.spr_chars);
 }
+if (sprite_exists(global.spr_px)) { sprite_delete(global.spr_px); }
 theme_free();
