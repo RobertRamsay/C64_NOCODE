@@ -24,7 +24,9 @@ function build_ws_build(_run)
         if (!build_choose_output()) { return; }
     }
     var _t0 = current_time;
-    var _ok = build_prg(out_path);
+    var _ok = false;
+    if (proj.game_type == 1) { _ok = build_engine_prg(out_path); }
+    else { _ok = build_prg(out_path); }
     if (_ok)
     {
         build_log_add(build_msg + "  (" + string(current_time - _t0) + " ms)", 0);
@@ -82,15 +84,35 @@ function ws_build_draw(_x1, _y1, _x2, _y2)
     }
     var _items = [];
     var _kinds = [];
-    if (_has_player) { array_push(_items, "There is a Player actor for the joystick"); array_push(_kinds, 0); }
+    if (proj.game_type == 1)
+    {
+        var _bud = eng_cycle_budget(proj.eng);
+        array_push(_items, global.KIND_LIST[proj.eng.kind - 1] + ", " + string_lower(global.SCROLL_NAMES[proj.eng.scroll]));
+        array_push(_kinds, 0);
+        array_push(_items, string(array_length(proj.levels)) + " level(s), " + string(array_length(proj.tiles)) + " tiles, " + string(array_length(proj.enemies)) + " enemy types");
+        array_push(_kinds, 0);
+        var _sp = 0;
+        for (var lq = 0; lq < array_length(proj.levels); lq++) { _sp += array_length(proj.levels[lq].spawners); }
+        array_push(_items, string(_sp) + " enemy spawner(s) placed");
+        if (_sp > 0) { array_push(_kinds, 0); } else { array_push(_kinds, 1); }
+        if (_bud.fits && !_bud.tear) { array_push(_items, "Fits the stock C64 frame budget"); array_push(_kinds, 0); }
+        else { array_push(_items, "Over the frame budget - see the World page"); array_push(_kinds, 1); }
+        var _small = false;
+        for (var lw2 = 0; lw2 < array_length(proj.levels); lw2++) { if (proj.levels[lw2].w < 20) { _small = true; } }
+        if (_small) { array_push(_items, "A map is narrower than 20 tiles"); array_push(_kinds, 2); }
+    }
+    else if (_has_player) { array_push(_items, "There is a Player actor for the joystick"); array_push(_kinds, 0); }
     else { array_push(_items, "No Player actor - set one on the Actors page"); array_push(_kinds, 1); }
-    array_push(_items, string(_na) + " of 8 actors used");
-    if (_na > 0) { array_push(_kinds, 0); } else { array_push(_kinds, 1); }
-    array_push(_items, string(_nr) + " rule(s)");
-    if (_nr > 0) { array_push(_kinds, 0); } else { array_push(_kinds, 1); }
-    if (_end) { array_push(_items, "The game can end (game over or win)"); array_push(_kinds, 0); }
-    else { array_push(_items, "Nothing ends the game yet - add a Game over or You win rule"); array_push(_kinds, 1); }
-    if (proj.show_lives && !_lose) { array_push(_items, "Lives are shown but no rule takes a life away"); array_push(_kinds, 1); }
+    if (proj.game_type == 0)
+    {
+        array_push(_items, string(_na) + " of 8 actors used");
+        if (_na > 0) { array_push(_kinds, 0); } else { array_push(_kinds, 1); }
+        array_push(_items, string(_nr) + " rule(s)");
+        if (_nr > 0) { array_push(_kinds, 0); } else { array_push(_kinds, 1); }
+        if (_end) { array_push(_items, "The game can end (game over or win)"); array_push(_kinds, 0); }
+        else { array_push(_items, "Nothing ends the game yet - add a Game over or You win rule"); array_push(_kinds, 1); }
+    }
+    if (proj.game_type == 0 && proj.show_lives && !_lose) { array_push(_items, "Lives are shown but no rule takes a life away"); array_push(_kinds, 1); }
     ui_heading(_fx, _y, "Checklist");
     _y += 22;
     for (var c = 0; c < array_length(_items); c++)
@@ -147,9 +169,11 @@ function ws_build_draw(_x1, _y1, _x2, _y2)
     if (build_ok)
     {
         var _range = 16384 - 2049;
+        var _sprsz = SPR_COUNT * 64;
+        if (proj.game_type == 1) { _range = 32768 - 2049; _sprsz = 2048 + 2048; }
         var _codew = (build_spr - 2049) / _range * (_fw - 4);
-        var _sprw = 512 / _range * (_fw - 4);
-        var _restw = max(0, (build_end - build_spr - 512) / _range * (_fw - 4));
+        var _sprw = _sprsz / _range * (_fw - 4);
+        var _restw = max(0, (build_end - build_spr - _sprsz) / _range * (_fw - 4));
         ui_rrect(_fx + 2, _y + 2, _fx + 2 + _codew, _y + 24, 6, global.TH.accent, global.TH.accent_dark, 1);
         ui_rrect(_fx + 2 + _codew, _y + 2, _fx + 2 + _codew + _sprw, _y + 24, 4, global.TH.warn, merge_colour(global.TH.warn, c_black, 0.3), 1);
         ui_rrect(_fx + 2 + _codew + _sprw, _y + 2, _fx + 2 + _codew + _sprw + _restw, _y + 24, 4, global.TH.accent2, merge_colour(global.TH.accent2, c_black, 0.3), 1);

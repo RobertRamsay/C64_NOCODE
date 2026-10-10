@@ -17,6 +17,12 @@ switch (ws)
     case WS_LOGIC:   ws_logic_draw(_x1, _y1, _x2, _y2);   break;
     case WS_SOUND:   ws_sound_draw(_x1, _y1, _x2, _y2);   break;
     case WS_BUILD:   ws_build_draw(_x1, _y1, _x2, _y2);   break;
+    case WS_TEMPLATES: ws_templates_draw(_x1, _y1, _x2, _y2); break;
+    case WS_WORLD:   ws_world_draw(_x1, _y1, _x2, _y2);   break;
+    case WS_CHARSET: ws_charset_draw(_x1, _y1, _x2, _y2); break;
+    case WS_TILES:   ws_tiles_draw(_x1, _y1, _x2, _y2);   break;
+    case WS_MAP:     ws_map_draw(_x1, _y1, _x2, _y2);     break;
+    case WS_ENEMIES: ws_enemies_draw(_x1, _y1, _x2, _y2); break;
 }
 
 draw_topbar(gui_w);

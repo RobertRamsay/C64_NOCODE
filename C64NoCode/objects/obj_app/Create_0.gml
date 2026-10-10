@@ -24,6 +24,8 @@ caption_last = "";
 // ---------- systems ----------
 theme_init();
 project_defs_init();
+engine_defs_init();
+templates_init();
 asm6502_init();
 chargen_init();
 
@@ -108,9 +110,41 @@ spr_sel = 0;
 spr_pen = 1;
 spr_drawing = false;
 spr_clip = "";
-spr_surf_own = array_create(8, -1);
-spr_surf_sh = array_create(8, -1);
-spr_dirty = array_create(8, true);
+spr_surf_own = array_create(SPR_COUNT, -1);
+spr_surf_sh = array_create(SPR_COUNT, -1);
+spr_dirty = array_create(SPR_COUNT, true);
+
+// map-game editors
+charset_dirty = true;
+pchars_sprite = -1;
+tile_atlas = -1;
+atlas_dirty = true;
+tpl_cache = [];
+ch_sel = 128;
+ch_colour = 1;
+ch_mc_view = false;
+ch_pen = 3;
+ch_drawing = false;
+ch_clip = [];
+tile_sel = 1;
+tile_quad = 0;
+map_level = 0;
+map_tool = 0;
+map_tile = 1;
+map_zoom = 24;
+map_sx = 0;
+map_sy = 0;
+map_pan = false;
+map_pan_mx = 0;
+map_pan_my = 0;
+map_drawing = false;
+map_box_x = 0;
+map_box_y = 0;
+map_box_clear = false;
+map_spawner_sel = -1;
+map_drag_sp = false;
+map_show_window = true;
+enemy_sel = 0;
 
 // actors
 sel_actor = 0;

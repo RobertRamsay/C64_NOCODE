@@ -210,6 +210,13 @@ function asm_ev_unary(_st)
     if (_st.i >= array_length(_st.toks)) { throw ("Missing value"); }
     var _t = _st.toks[_st.i];
     _st.i += 1;
+    if (_t == "(")
+    {
+        var _pv = asm_ev_add(_st);
+        if (_st.i < array_length(_st.toks) && _st.toks[_st.i] == ")") { _st.i += 1; }
+        else { throw ("Missing )"); }
+        return _pv;
+    }
     if (_t == "<") { return asm_ev_unary(_st) & 255; }
     if (_t == ">") { return (asm_ev_unary(_st) >> 8) & 255; }
     if (_t == "-") { return -asm_ev_unary(_st); }
@@ -245,6 +252,7 @@ function asm6502_assemble(_src)
             var _pc = 0;
             var _org = -1;
             var _out = [];
+            var _cond = [];
             for (_ln = 0; _ln < array_length(_lines); _ln++)
             {
                 var _l = _lines[_ln];
@@ -252,6 +260,46 @@ function asm6502_assemble(_src)
                 if (_sc > 0) { _l = string_copy(_l, 1, _sc - 1); }
                 _l = string_trim(_l);
                 if (_l == "") { continue; }
+
+                // conditional assembly
+                var _active = true;
+                for (var ci = 0; ci < array_length(_cond); ci++)
+                {
+                    if (!_cond[ci]) { _active = false; }
+                }
+                var _w0 = string_upper(string_copy(_l, 1, 6));
+                if (string_copy(_w0, 1, 4) == ".IF ")
+                {
+                    if (_active)
+                    {
+                        var _cv = asm_eval(string_delete(_l, 1, 4), _labels, false).value;
+                        array_push(_cond, _cv != 0);
+                    }
+                    else
+                    {
+                        array_push(_cond, false);
+                    }
+                    continue;
+                }
+                if (string_copy(_w0, 1, 5) == ".ELSE")
+                {
+                    if (array_length(_cond) == 0) { throw (".else without .if"); }
+                    var _outer = true;
+                    for (var co = 0; co < array_length(_cond) - 1; co++)
+                    {
+                        if (!_cond[co]) { _outer = false; }
+                    }
+                    var _last = array_length(_cond) - 1;
+                    _cond[_last] = (!_cond[_last]) && _outer;
+                    continue;
+                }
+                if (_w0 == ".ENDIF")
+                {
+                    if (array_length(_cond) == 0) { throw (".endif without .if"); }
+                    array_pop(_cond);
+                    continue;
+                }
+                if (!_active) { continue; }
 
                 // label:
                 var _colon = string_pos(":", _l);
@@ -369,6 +417,7 @@ function asm6502_assemble(_src)
                 {
                     if (_tab[2] < 0) { throw ("'" + _mn + "' cannot use #immediate"); }
                     var _iv = asm_eval(string_delete(_opd, 1, 1), _labels, _p1);
+                    if (!_p1 && (_iv.value < -128 || _iv.value > 255)) { throw ("Value " + string(_iv.value) + " is too big for #"); }
                     array_push(_out, _tab[2], _iv.value & 255);
                     _pc += 2;
                     continue;

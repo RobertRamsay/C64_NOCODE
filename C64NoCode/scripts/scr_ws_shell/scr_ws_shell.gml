@@ -7,7 +7,7 @@
 #macro WS_LOGIC 4
 #macro WS_SOUND 5
 #macro WS_BUILD 6
-#macro WS_COUNT 7
+#macro WS_COUNT 13
 
 function ws_set(_i)
 {
@@ -56,36 +56,29 @@ function draw_topbar(_gw)
     draw_set_alpha(1);
     draw_logo(14, 13);
 
-    var _names = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build"];
-    var _help = [
-        "Home|Start here: open or create projects, take the guided tour and set game-wide options like lives and score.",
-        "Screen|Paint the background screen with C64 characters and colours, or type text straight onto it.",
-        "Sprites|Draw up to 8 sprites pixel by pixel. These become the pictures for your actors.",
-        "Actors|Place the things that move: the player, enemies and pickups. Choose how each one behaves.",
-        "Logic|Make the game rules in plain English: WHEN something happens, DO something.",
-        "Sound|Design up to 8 sound effects with the C64's SID chip and preview them instantly.",
-        "Build|Turn your game into a real C64 program (.PRG) and play it in VICE or on real hardware."
-    ];
+    var _tabs = ws_tabs();
+    var _nt = array_length(_tabs);
     var _tw = 94;
     var _tx = 210;
-    var _avail = _gw - 210 - 360;
-    if (_avail < _tw * WS_COUNT) { _tw = max(70, floor(_avail / WS_COUNT)); }
-    ui_rrect(_tx - 6, 11, _tx + _tw * WS_COUNT + 6, 49, 19, global.TH.inset_top, global.TH.inset_bot, 0.8);
-    for (var i = 0; i < WS_COUNT; i++)
+    var _avail = _gw - 210 - 380;
+    if (_avail < _tw * _nt) { _tw = max(64, floor(_avail / _nt)); }
+    ui_rrect(_tx - 6, 11, _tx + _tw * _nt + 6, 49, 19, global.TH.inset_top, global.TH.inset_bot, 0.8);
+    for (var i = 0; i < _nt; i++)
     {
-        if (ui_tab("tab_" + string(i), _tx + i * _tw, 14, _tw - 2, 32, _names[i], ws == i, _help[i]))
+        var _w = _tabs[i];
+        if (ui_tab("tab_" + string(_w), _tx + i * _tw, 14, _tw - 2, 32, ui_text_fit(ws_name(_w), global.f_bold, _tw - 10), ws == _w, ws_help(_w)))
         {
-            ws_set(i);
+            ws_set(_w);
         }
     }
 
     var _rx = _gw - 14;
-    _rx -= 110;
-    if (ui_button("top_tutorial", _rx, 14, 110, 32, "Tutorial (F1)", "Tutorial|Shows a step-by-step guide for the page you are on. Every page has its own tutorial.", BTN_ACCENT))
+    _rx -= 104;
+    if (ui_button("top_tutorial", _rx, 14, 104, 32, "Tutorial (F1)", "Tutorial|Shows a step-by-step guide for the page you are on. Every page has its own tutorial.", BTN_ACCENT))
     {
         tut_start(ws);
     }
-    _rx -= 92;
+    _rx -= 108;
     var _hlab = "Helpers off";
     var _hsty = BTN_NORMAL;
     if (helpers_on)
@@ -93,7 +86,7 @@ function draw_topbar(_gw)
         _hlab = "Helpers on";
         _hsty = BTN_ON;
     }
-    if (ui_button("top_helpers", _rx, 14, 86, 32, _hlab, "Hover helpers|When on, resting the mouse on any control draws guide lines and a help bubble explaining it.", _hsty))
+    if (ui_button("top_helpers", _rx, 14, 102, 32, _hlab, "Hover helpers|When on, resting the mouse on any control draws guide lines and a help bubble explaining it.", _hsty))
     {
         helpers_on = !helpers_on;
         settings_save();
@@ -125,9 +118,46 @@ function shortcuts_step()
     }
     if (!tut_active && !_ctrl && ws != WS_SCREEN)
     {
-        for (var i = 0; i < WS_COUNT; i++)
+        var _tabs = ws_tabs();
+        for (var i = 0; i < min(9, array_length(_tabs)); i++)
         {
-            if (keyboard_check_pressed(ord(string(i + 1)))) { ws_set(i); }
+            if (keyboard_check_pressed(ord(string(i + 1)))) { ws_set(_tabs[i]); }
         }
     }
+}
+
+/// Tabs shown for the current kind of project
+function ws_tabs()
+{
+    if (proj.game_type == 1)
+    {
+        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_SOUND, WS_BUILD];
+    }
+    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_LOGIC, WS_SOUND, WS_BUILD];
+}
+
+function ws_name(_w)
+{
+    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies"];
+    return _n[_w];
+}
+
+function ws_help(_w)
+{
+    var _h = [
+        "Home|Start here: open or create projects, choose single-screen or map game, and set game-wide options.",
+        "Screen|Paint the background screen with C64 characters and colours, or type text straight onto it.",
+        "Sprites|Draw up to 32 sprites pixel by pixel. They become the pictures for players, enemies and bullets.",
+        "Actors|Place the things that move: the player, enemies and pickups. Choose how each one behaves.",
+        "Logic|Make the game rules in plain English: WHEN something happens, DO something.",
+        "Sound|Design up to 8 sound effects with the C64's SID chip and preview them instantly.",
+        "Build|Turn your game into a real C64 program (.PRG) and play it in VICE or on real hardware.",
+        "Templates|Ready-made games to start from: shoot-em-ups, platformers, a Boulder Dash style cave and more.",
+        "World|How the map game plays: kind of game, scrolling, the play window, the player, weapons, and the stock-C64 cycle meter.",
+        "Charset|Edit the 256 characters that tiles are built from, in hi-res or multicolour.",
+        "Tiles|Build 16x16 tiles from 4 characters and give them jobs: solid, deadly, collectable, exit, ladder and more.",
+        "Map|Paint levels with tiles, place enemy spawners and the player's start. Up to 8 levels.",
+        "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot."
+    ];
+    return _h[_w];
 }

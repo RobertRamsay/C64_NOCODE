@@ -53,14 +53,14 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
     {
         tut_start(-1);
     }
-    if (ui_button("home_example", _bx + 200, _by, 170, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
+    if (ui_button("home_example", _bx + 200, _by, 190, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
     {
         home_new(true);
     }
-    if (ui_button("home_new", _bx + 380, _by, 80, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
-    if (ui_button("home_open", _bx + 468, _by, 80, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
-    if (ui_button("home_save", _bx + 556, _by, 80, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
-    if (ui_button("home_saveas", _bx + 644, _by, 96, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
+    if (ui_button("home_new", _bx + 400, _by, 80, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
+    if (ui_button("home_open", _bx + 488, _by, 80, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
+    if (ui_button("home_save", _bx + 576, _by, 80, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
+    if (ui_button("home_saveas", _bx + 664, _by, 96, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
 
     // ---------- workflow cards ----------
     var _cy = _y1 + 270;
@@ -93,7 +93,9 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
         if (_hot && ui_pressed)
         {
             ui_take_click();
-            ws_set(i + 1);
+            var _dest = [WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_LOGIC, WS_SOUND, WS_BUILD];
+            if (proj.game_type == 1) { _dest = [WS_MAP, WS_SPRITES, WS_ENEMIES, WS_WORLD, WS_SOUND, WS_BUILD]; }
+            ws_set(_dest[i]);
         }
     }
 
@@ -106,6 +108,9 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
     ui_heading(_fx, _y, "Game name");
     var _nm = ui_textfield("home_name", _fx, _y + 18, _fw, 32, proj.name, 32, "Game name|The name of your game. It is used for the saved file names too.");
     set_val(proj, "name", _nm, "name");
+    _y += 64;
+    ui_heading(_fx, _y, "Type of project");
+    set_val(proj, "game_type", ui_dropdown("home_gametype", _fx, _y + 18, _fw, 32, global.GAME_TYPE_NAMES, proj.game_type, "Project type|Single screen games use actors and WHEN/DO rules. Map games use the scrolling engine with tiles, maps, spawners and enemy types (shoot-em-ups, platformers, cave diggers, mazes)."), "gametype");
     _y += 64;
 
     var _half = floor((_fw - 12) / 2);

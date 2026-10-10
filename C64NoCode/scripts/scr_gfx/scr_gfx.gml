@@ -3,10 +3,13 @@
 function chargen_init()
 {
     global.spr_chars = -1;
+    global.chargen_rom = [];
     var _path = working_directory + "chargen";
     if (!file_exists(_path)) { return; }
     var _b = buffer_load(_path);
     if (_b == -1) { return; }
+    global.chargen_rom = array_create(2048, 0);
+    for (var k = 0; k < 2048; k++) { global.chargen_rom[k] = buffer_peek(_b, k, buffer_u8); }
     var _surf = surface_create(128, 128);
     surface_set_target(_surf);
     draw_clear_alpha(c_black, 0);
@@ -136,7 +139,7 @@ function spr_cache_update(_i)
 
 function draw_sprite_c64(_i, _x, _y, _scale, _colour, _alpha)
 {
-    if (_i < 0 || _i > 7) { return; }
+    if (_i < 0 || _i >= SPR_COUNT) { return; }
     spr_cache_update(_i);
     gpu_set_texfilter(false);
     draw_surface_ext(spr_surf_sh[_i], _x, _y, _scale, _scale, 0, c_white, _alpha);
@@ -146,7 +149,7 @@ function draw_sprite_c64(_i, _x, _y, _scale, _colour, _alpha)
 
 function spr_cache_free()
 {
-    for (var i = 0; i < 8; i++)
+    for (var i = 0; i < SPR_COUNT; i++)
     {
         if (surface_exists(spr_surf_own[i])) { surface_free(spr_surf_own[i]); }
         if (surface_exists(spr_surf_sh[i])) { surface_free(spr_surf_sh[i]); }
@@ -155,5 +158,5 @@ function spr_cache_free()
 
 function spr_mark_all_dirty()
 {
-    for (var i = 0; i < 8; i++) { spr_dirty[i] = true; }
+    for (var i = 0; i < SPR_COUNT; i++) { spr_dirty[i] = true; }
 }

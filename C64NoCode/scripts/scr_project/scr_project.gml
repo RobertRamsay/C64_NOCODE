@@ -1,5 +1,7 @@
 /// C64 NO-CODE STUDIO - project data model, presets, save/load, undo
 
+#macro SPR_COUNT 32
+
 function project_defs_init()
 {
     global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)"];
@@ -99,11 +101,15 @@ function project_new()
     };
     for (var i = 0; i < 8; i++)
     {
-        array_push(_p.sprites, sprite_new("Sprite " + string(i + 1)));
         var _s = sfx_new(global.SFX_PRESET_NAMES[i]);
         sfx_apply_preset(_s, i);
         array_push(_p.sfx, _s);
     }
+    for (var k = 0; k < SPR_COUNT; k++)
+    {
+        array_push(_p.sprites, sprite_new("Sprite " + string(k + 1)));
+    }
+    project_add_engine(_p);
     return _p;
 }
 
@@ -240,7 +246,7 @@ function project_from_loaded(_raw)
     if (!is_array(_p.cols) || array_length(_p.cols) != 1000) { _p.cols = array_create(1000, 14); }
 
     var _ls = _raw[$ "sprites"];
-    for (var i = 0; i < 8; i++)
+    for (var i = 0; i < SPR_COUNT; i++)
     {
         var _s = sprite_new("Sprite " + string(i + 1));
         if (is_array(_ls) && i < array_length(_ls)) { struct_overlay(_s, _ls[i]); }
@@ -279,6 +285,56 @@ function project_from_loaded(_raw)
         }
     }
     _p.rules = _rules;
+
+    // map-game engine data
+    var _eng = eng_settings_new();
+    struct_overlay(_eng, _raw[$ "eng"]);
+    _p.eng = _eng;
+    if (!is_array(_p.charset) || array_length(_p.charset) != 2048)
+    {
+        _p.charset = array_create(2048, 0);
+        array_copy(_p.charset, 0, global.chargen_rom, 0, min(2048, array_length(global.chargen_rom)));
+    }
+    var _tiles = [];
+    var _lt = _raw[$ "tiles"];
+    if (is_array(_lt))
+    {
+        for (var t = 0; t < min(64, array_length(_lt)); t++)
+        {
+            var _tl = struct_overlay(tile_new("Tile"), _lt[t]);
+            if (!is_array(_tl.c) || array_length(_tl.c) != 4) { _tl.c = [32, 32, 32, 32]; }
+            array_push(_tiles, _tl);
+        }
+    }
+    if (array_length(_tiles) == 0) { _tiles = [tile_new("Empty")]; }
+    _p.tiles = _tiles;
+    var _ens = [];
+    var _le = _raw[$ "enemies"];
+    if (is_array(_le))
+    {
+        for (var e = 0; e < min(16, array_length(_le)); e++) { array_push(_ens, struct_overlay(enemy_new("Enemy"), _le[e])); }
+    }
+    if (array_length(_ens) == 0) { _ens = [enemy_new("Enemy 1")]; }
+    _p.enemies = _ens;
+    var _lvls = [];
+    var _ll = _raw[$ "levels"];
+    if (is_array(_ll))
+    {
+        for (var l = 0; l < min(8, array_length(_ll)); l++)
+        {
+            var _lv = struct_overlay(level_new("Level", 40, 12), _ll[l]);
+            if (!is_array(_lv.map) || array_length(_lv.map) != _lv.w * _lv.h) { _lv.map = array_create(_lv.w * _lv.h, 0); }
+            var _sps = [];
+            if (is_array(_lv.spawners))
+            {
+                for (var q = 0; q < array_length(_lv.spawners); q++) { array_push(_sps, struct_overlay(spawner_new(0, 0, 0), _lv.spawners[q])); }
+            }
+            _lv.spawners = _sps;
+            array_push(_lvls, _lv);
+        }
+    }
+    if (array_length(_lvls) == 0) { _lvls = [level_new("Level 1", 40, 12)]; }
+    _p.levels = _lvls;
     return _p;
 }
 
@@ -343,7 +399,8 @@ function project_load_from(_path)
 
 function project_after_change()
 {
-    for (var i = 0; i < 8; i++) { spr_dirty[i] = true; }
+    for (var i = 0; i < SPR_COUNT; i++) { spr_dirty[i] = true; }
+    charset_dirty = true;
     sel_actor = clamp(sel_actor, 0, max(0, array_length(proj.actors) - 1));
     build_listing = [];
 }

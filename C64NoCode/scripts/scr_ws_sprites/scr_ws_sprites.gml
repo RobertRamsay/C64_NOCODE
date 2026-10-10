@@ -99,12 +99,15 @@ function ws_sprites_draw(_x1, _y1, _x2, _y2)
     var _s = proj.sprites[spr_sel];
 
     // ---------------- sprite list ----------------
-    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Sprites");
+    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Sprites (" + string(SPR_COUNT) + ")");
     var _ly = _y1 + 54;
-    var _rowh = floor(min(66, (_y2 - _ly - 10) / 8));
-    for (var i = 0; i < 8; i++)
+    var _rowh = 60;
+    var _lcontent = SPR_COUNT * _rowh + 10;
+    var _loff = ui_scroll_begin("spr_list", _x1 + 6, _y1 + 50, _x1 + _lw - 6, _y2 - 8, _lcontent);
+    for (var i = 0; i < SPR_COUNT; i++)
     {
-        var _ry = _ly + i * _rowh;
+        var _ry = _ly + i * _rowh - _loff;
+        if (_ry < _y1 - _rowh || _ry > _y2) { continue; }
         var _id = "spr_slot_" + string(i);
         var _hot = ui_register(_id, _x1 + 10, _ry, _x1 + _lw - 10, _ry + _rowh - 6, proj.sprites[i].name + "|Click to edit this sprite. Actors use sprites as their pictures.");
         var _tgt = 0;
@@ -132,6 +135,7 @@ function ws_sprites_draw(_x1, _y1, _x2, _y2)
             ui_take_click();
         }
     }
+    ui_scroll_end("spr_list", _x1 + 6, _y1 + 50, _x1 + _lw - 6, _y2 - 8, _lcontent);
 
     // ---------------- editor grid ----------------
     var _cx1 = _x1 + _lw + 12;

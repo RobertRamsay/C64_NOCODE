@@ -61,7 +61,35 @@ function tut_init()
         tut_step(WS_BUILD, "build_vicepath", "Set up VICE", "VICE is a free C64 emulator. Point the studio at x64sc.exe once and it will remember."),
         tut_step(WS_BUILD, "build_run", "Build and play", "Builds your game and launches it in VICE straight away. Plug the joystick into port 2!"),
         tut_step(WS_BUILD, "build_showasm", "Peek under the hood", "Curious? This shows the 6502 assembly language the studio wrote for you. You never have to touch it."),
-        tut_step(WS_BUILD, "", "You're ready!", "That's everything. Load the example, change something, build it and see what happens. Have fun making games!")
+        tut_step(WS_BUILD, "", "You're ready!", "That's everything. Load the example, change something, build it and see what happens. Have fun making games!"),
+        // ---------- TEMPLATES ----------
+        tut_step(WS_TEMPLATES, "tpl_card_1", "Start from a template", "Each card is a complete game: shoot-em-ups, platformers, a Boulder Dash style cave and a maze. The picture shows the start of its first level."),
+        tut_step(WS_TEMPLATES, "tpl_use_1", "Use it", "This replaces your project with the template. Then change anything - every tile, enemy and setting is yours to edit. Undo brings your old project back."),
+        // ---------- WORLD ----------
+        tut_step(WS_WORLD, "w_kind", "Kind of game", "Choose how the player moves: flying and shooting, running and jumping, digging through a cave, or walking a maze."),
+        tut_step(WS_WORLD, "w_scroll", "Scrolling", "Horizontal, vertical, 8-way or flip-screen. Shoot-em-ups can scroll by themselves; the others follow the player."),
+        tut_step(WS_WORLD, "w_wrows", "The play window", "Only the window scrolls; row 0 is the score bar. Fewer rows means less work for the C64 on every scroll step."),
+        tut_step(WS_WORLD, "w_meter", "Stock C64 cycle meter", "This shows how busy the C64 is on its hardest frame. Stay left of the white line and the game scrolls at a smooth 50 frames per second on a real machine."),
+        tut_step(WS_WORLD, "w_fit", "Auto-fit", "Not sure? This shrinks the window until it fits the budget."),
+        tut_step(WS_WORLD, "w_weapon", "Weapons", "Pick what the fire button shoots, then set the bullet picture, speed and reload time."),
+        // ---------- MAP ----------
+        tut_step(WS_MAP, "map_view", "Your level", "Paint with the left button, rub out with the right. The mouse wheel scrolls and middle-drag pans around big maps."),
+        tut_step(WS_MAP, "map_pal", "Tile palette", "Pick the tile to paint with. Tiles are made on the Tiles page."),
+        tut_step(WS_MAP, "map_tool_3", "Enemy spawners", "Place spawners where enemies should appear. They wake up when that part of the map scrolls into view."),
+        tut_step(WS_MAP, "map_tool_4", "Player start", "Click where the player begins the level."),
+        tut_step(WS_MAP, "map_win", "Screen-size guide", "The dotted box shows how much of the map the player sees at once."),
+        // ---------- TILES ----------
+        tut_step(WS_TILES, "tile_q0", "Tiles are 2 x 2 characters", "Click a corner, then click a character below to put it there."),
+        tut_step(WS_TILES, "tile_chars", "Character picker", "These are the characters from your charset. Draw new ones on the Charset page."),
+        tut_step(WS_TILES, "tile_attr0", "What a tile does", "Tick Solid for walls, Deadly for spikes, Collect for coins and gems, Exit for doors, Ladder, One-way platforms, Diggable dirt and Falls for boulders."),
+        // ---------- CHARSET ----------
+        tut_step(WS_CHARSET, "ch_grid", "The character set", "All 256 characters. Pick one to edit."),
+        tut_step(WS_CHARSET, "ch_edit", "Draw pixels", "Left-click draws, right-click rubs out. Every tile using this character updates straight away."),
+        tut_step(WS_CHARSET, "ch_mc", "Multicolour", "Switch to multicolour view to draw 4-colour characters with wide pixels."),
+        // ---------- ENEMIES ----------
+        tut_step(WS_ENEMIES, "en_preview", "Movement preview", "A quick picture of how this enemy moves and where it shoots."),
+        tut_step(WS_ENEMIES, "en_move", "Movement", "Straight, sine wave, homing, bouncing, walking along platforms or crawling around walls."),
+        tut_step(WS_ENEMIES, "en_fire", "Shooting", "Enemies can fire in a set direction or aim straight at the player.")
     ];
     tut_active = false;
     tut_list = [];
@@ -76,9 +104,16 @@ function tut_init()
 function tut_start(_tab)
 {
     tut_list = [];
+    var _tabs = ws_tabs();
     for (var i = 0; i < array_length(tut_steps); i++)
     {
-        if (_tab < 0 || tut_steps[i].tab == _tab) { array_push(tut_list, i); }
+        var _visible = false;
+        for (var t = 0; t < array_length(_tabs); t++)
+        {
+            if (_tabs[t] == tut_steps[i].tab) { _visible = true; }
+        }
+        if (_tab < 0 && _visible) { array_push(tut_list, i); }
+        if (_tab >= 0 && tut_steps[i].tab == _tab) { array_push(tut_list, i); }
     }
     if (array_length(tut_list) == 0) { return; }
     tut_index = 0;

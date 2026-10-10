@@ -64,6 +64,7 @@ function logic_sentence(_r)
     var _names = actor_names();
     var _na = array_length(proj.actors);
     var _s = "When ";
+    if (_r.when == 2) { _s = ""; }
     var _an = "?";
     var _bn = "?";
     if (_r.a < _na) { _an = _names[_r.a]; }
@@ -75,7 +76,7 @@ function logic_sentence(_r)
             else { _s += _an + " touches " + _bn; }
             break;
         case 1: _s += "the fire button is pressed"; break;
-        case 2: _s += "every " + string(_r.n) + " seconds pass"; break;
+        case 2: _s += "Every " + string(_r.n) + " seconds"; break;
         case 3: _s += "the score reaches " + string(_r.n); break;
         case 4: _s += "the player runs out of lives"; break;
         case 5: _s += "the game starts"; break;

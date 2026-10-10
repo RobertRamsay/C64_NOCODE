@@ -89,7 +89,7 @@ function codegen_project(_p)
     for (var a = 0; a < na; a++)
     {
         var _ac = _acts[a];
-        var _si = clamp(_ac.sprite, 0, 7);
+        var _si = clamp(_ac.sprite, 0, SPR_COUNT - 1);
         if (_p.sprites[_si].mc) { _mc = _mc | (1 << a); }
         var _x = clamp(floor(_ac.x), CG_XMIN, CG_XMAX);
         var _y = clamp(floor(_ac.y), CG_YMIN, CG_YMAX);
@@ -399,7 +399,7 @@ function codegen_project(_p)
     }
 
     array_push(L, " .padto $2000", " .align 64", "spr_data:");
-    for (var sp = 0; sp < 8; sp++)
+    for (var sp = 0; sp < SPR_COUNT; sp++)
     {
         var _bytes = sprite_encode(_p.sprites[sp]);
         array_push(L, " .byte " + cg_join_bytes(_bytes, 0, 63) + ",0");
@@ -427,7 +427,7 @@ function build_prg(_path)
     }
     var _end = _res.org + array_length(_res.bytes);
     var _spr = _res.labels[$ "spr_data"];
-    if (_spr + 512 > 16384)
+    if (_spr + SPR_COUNT * 64 > 16384)
     {
         build_ok = false;
         build_msg = "Build failed - the game is too big for the sprite area (ends at $" + string_upper(dec_to_hex(_end)) + ").";

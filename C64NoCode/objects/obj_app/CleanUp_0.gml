@@ -2,6 +2,8 @@
 
 sfx_preview_stop();
 spr_cache_free();
+if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
+if (surface_exists(tile_atlas)) { surface_free(tile_atlas); }
 ds_map_destroy(ui_rects);
 ds_map_destroy(ui_anim);
 ds_map_destroy(ui_scroll);
