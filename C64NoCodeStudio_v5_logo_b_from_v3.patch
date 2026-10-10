@@ -1,0 +1,86 @@
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index 5d95c64..631d203 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -23,28 +23,52 @@ function ws_set(_i)
+     }
+ }
+ 
++/// Draws text with the real C64 character ROM. Returns its width.
++function ui_c64_text(_x, _y, _str, _scale, _col)
++{
++    gpu_set_texfilter(false);
++    for (var i = 1; i <= string_length(_str); i++)
++    {
++        var _code = scr_code_from_char(string_char_at(_str, i));
++        if (_code != 32) { draw_c64_char(_code, _x + (i - 1) * 8 * _scale, _y, _scale, _col); }
++    }
++    gpu_set_texfilter(true);
++    return string_length(_str) * 8 * _scale;
++}
++
++/// Logo capsule: "64  C64 NO-CODE" in the C64 font + rainbow stripes. Returns its width.
+ function draw_logo(_x, _y)
+ {
+-    // rainbow badge in the spirit of the breadbin stripes
+-    var _w = 46;
+     var _h = 34;
+-    ui_rrect(_x, _y, _x + _w, _y + _h, 9, make_colour_rgb(70, 78, 92), make_colour_rgb(40, 46, 56), 1);
++    var _sc = 2;
++    var _r = _h * 0.5;
++    var _ty = _y + (_h - 8 * _sc) * 0.5;
++    var _badge_w = 2 * 8 * _sc;
++    var _title_w = 11 * 8 * _sc;
++    var _stripe_x = _x + 14 + _badge_w + 14 + _title_w + 12;
++    var _w = (_stripe_x - _x) + 34 + 6;
++    ui_rrect(_x, _y + 2, _x + _w, _y + _h + 2, _r, c_black, c_black, 0.3);
++    ui_rrect(_x, _y, _x + _w, _y + _h, _r, make_colour_rgb(70, 78, 92), make_colour_rgb(40, 46, 56), 1);
++    ui_rrect(_x + 2, _y + 1, _x + _w - 2, _y + _h * 0.45, _r - 1, c_white, c_white, 0.06);
++    ui_rrect_line(_x, _y, _x + _w, _y + _h, _r, global.TH.panel_edge, 0.8, 1);
++    ui_c64_text(_x + 14, _ty, "64", _sc, c_white);
++    ui_c64_text(_x + 14 + _badge_w + 14, _ty, "C64 NO-CODE", _sc, global.TH.text);
++    // breadbin rainbow stripes at the right end
+     var _stripes = [make_colour_rgb(222, 72, 72), make_colour_rgb(240, 150, 60), make_colour_rgb(240, 210, 80), make_colour_rgb(90, 190, 110), make_colour_rgb(80, 140, 230)];
++    var _st = _y + 8;
++    var _sb = _y + _h - 8;
+     for (var i = 0; i < 5; i++)
+     {
+-        var _sx = _x + 22 + i * 4;
++        var _sx = _stripe_x + i * 4.5;
+         draw_set_colour(_stripes[i]);
+         draw_primitive_begin(pr_trianglestrip);
+-        draw_vertex(_sx, _y + _h - 4);
+-        draw_vertex(_sx + 3, _y + _h - 4);
+-        draw_vertex(_sx + 10, _y + 4);
+-        draw_vertex(_sx + 13, _y + 4);
++        draw_vertex(_sx, _sb);
++        draw_vertex(_sx + 3, _sb);
++        draw_vertex(_sx + 11, _st);
++        draw_vertex(_sx + 14, _st);
+         draw_primitive_end();
+     }
+-    ui_text(_x + 6, _y + _h * 0.5, "64", c_white, fa_left, fa_middle, global.f_bold, 1);
+-    ui_rrect_line(_x, _y, _x + _w, _y + _h, 9, global.TH.panel_edge, 0.8, 1);
+-    ui_text(_x + _w + 12, _y + 4, "C64 NO-CODE", global.TH.text, fa_left, fa_top, global.f_bold, 1);
+-    ui_text(_x + _w + 12, _y + 19, "STUDIO", global.TH.accent, fa_left, fa_top, global.f_small, 1);
++    return _w;
+ }
+ 
+ function draw_topbar(_gw)
+@@ -54,13 +78,13 @@ function draw_topbar(_gw)
+     draw_set_alpha(0.25);
+     draw_line_colour(0, 61, _gw, 61, c_black, c_black);
+     draw_set_alpha(1);
+-    draw_logo(14, 13);
++    var _logo_w = draw_logo(14, 13);
+ 
+     var _tabs = ws_tabs();
+     var _nt = array_length(_tabs);
+     var _tw = 94;
+-    var _tx = 210;
+-    var _avail = _gw - 210 - 380;
++    var _tx = 14 + _logo_w + 18;
++    var _avail = _gw - _tx - 380;
+     if (_avail < _tw * _nt) { _tw = max(64, floor(_avail / _nt)); }
+     ui_rrect(_tx - 6, 11, _tx + _tw * _nt + 6, 49, 19, global.TH.inset_top, global.TH.inset_bot, 0.8);
+     for (var i = 0; i < _nt; i++)
