@@ -23,7 +23,10 @@ function sprite_new(_name)
         mc : false,
         hi : array_create(504, 0),
         mcp : array_create(252, 0),
-        preview : 1
+        preview : 1,
+        frames : 1,
+        anim_speed : 3,
+        left : false
     };
 }
 
@@ -154,46 +157,50 @@ function project_example()
             if (_iy == 12 && (_ix == 6 || _ix == 17)) { _hero.hi[_iy * 24 + _ix] = 0; }
         }
     }
-    // sprite 2: ghost (multicolour)
-    var _gh = _p.sprites[1];
-    _gh.name = "Ghost";
-    _gh.mc = true;
-    _gh.preview = 2;
-    for (var y2 = 0; y2 < 21; y2++)
+    // sprites 2-3: ghost, two frames (skirt ripples)
+    var _ghost = [
+        "....1111....",
+        "..11111111..",
+        ".1111111111.",
+        ".1133113311.",
+        ".1132113211.",
+        ".1111111111.",
+        ".1111111111.",
+        ".1111111111.",
+        ".1111111111.",
+        ".1111111111."];
+    tpl_sprite_at(_p, 1, "Ghost", true, _ghost, 2, 3);
+    tpl_sprite_at(_p, 2, "Ghost 2", true, _ghost, 2, 3);
+    for (var gk = 0; gk < 12; gk++)
     {
-        for (var x2 = 0; x2 < 12; x2++)
-        {
-            var _in = false;
-            if (y2 < 9)
-            {
-                if (point_distance(x2 * 2 + 1, y2, 12, 9) <= 10) { _in = true; }
-            }
-            else
-            {
-                if (y2 < 18) { _in = true; }
-                else
-                {
-                    if ((x2 + (y2 - 18)) mod 3 != 0) { _in = true; }
-                }
-            }
-            if (x2 < 1 || x2 > 10) { _in = false; }
-            if (_in) { _gh.mcp[y2 * 12 + x2] = 1; }
-            if ((x2 == 3 || x2 == 4 || x2 == 7 || x2 == 8) && y2 >= 6 && y2 <= 9) { _gh.mcp[y2 * 12 + x2] = 3; }
-            if ((x2 == 4 || x2 == 8) && (y2 == 8 || y2 == 9)) { _gh.mcp[y2 * 12 + x2] = 2; }
-        }
+        if (gk mod 3 != 2) { _p.sprites[1].mcp[13 * 12 + gk] = 1; }
+        if (gk mod 3 != 0) { _p.sprites[2].mcp[13 * 12 + gk] = 1; }
     }
-    // sprite 3: gem (hires diamond)
-    var _gem = _p.sprites[2];
-    _gem.name = "Gem";
-    _gem.preview = 3;
-    for (var y3 = 0; y3 < 21; y3++)
-    {
-        for (var x3 = 0; x3 < 24; x3++)
-        {
-            if (abs(x3 - 11.5) * 1.1 + abs(y3 - 10) <= 9) { _gem.hi[y3 * 24 + x3] = 1; }
-            if (y3 == 6 && abs(x3 - 11.5) < 5) { _gem.hi[y3 * 24 + x3] = 0; }
-        }
-    }
+    tpl_anim(_p, 1, 2, 3, false);
+    // sprites 3-4: gem, two frames (sparkle)
+    var _gemrows = [
+        ".....33.....",
+        "....3113....",
+        "...311113...",
+        "..31111113..",
+        ".3111111113.",
+        ".2111111112.",
+        "..21111112..",
+        "...211112...",
+        "....2112....",
+        ".....22....."];
+    tpl_sprite_at(_p, 3, "Gem", true, _gemrows, 3, 5);
+    tpl_sprite_at(_p, 4, "Gem sparkle", true, _gemrows, 3, 5);
+    _p.sprites[4].mcp[6 * 12 + 4] = 3;
+    _p.sprites[4].mcp[7 * 12 + 3] = 3;
+    _p.sprites[4].mcp[7 * 12 + 4] = 3;
+    _p.sprites[4].mcp[7 * 12 + 5] = 3;
+    _p.sprites[4].mcp[8 * 12 + 4] = 3;
+    _p.sprites[4].mcp[3 * 12 + 10] = 3;
+    _p.sprites[4].mcp[2 * 12 + 11] = 3;
+    tpl_anim(_p, 3, 2, 4, false);
+    _p.mc1 = 0;
+    _p.mc2 = 1;
 
     var _a0 = actor_new("Hero");
     _a0.sprite = 0; _a0.colour = 7; _a0.role = 0; _a0.speed = 2; _a0.x = 172; _a0.y = 150;
@@ -202,7 +209,7 @@ function project_example()
     var _a2 = actor_new("Bouncy Ghost");
     _a2.sprite = 1; _a2.colour = 4; _a2.role = 1; _a2.speed = 2; _a2.x = 280; _a2.y = 90;
     var _a3 = actor_new("Gem");
-    _a3.sprite = 2; _a3.colour = 3; _a3.role = 5; _a3.speed = 1; _a3.x = 250; _a3.y = 190;
+    _a3.sprite = 3; _a3.colour = 3; _a3.role = 5; _a3.speed = 1; _a3.x = 250; _a3.y = 190;
     _p.actors = [_a0, _a1, _a2, _a3];
 
     _p.rules = [];

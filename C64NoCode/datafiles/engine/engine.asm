@@ -1588,6 +1588,10 @@ player_update:
     rts
 pu_go:
     ldx #0
+    lda joy
+    and #15
+    ora grid_mv
+    sta moving
     lda fire_cd
     beq pu_f0
     dec fire_cd
@@ -2679,6 +2683,18 @@ se_d:
     asl
     rol e_yhi,x
     sta e_ylo,x
+    ; walkers stand on the tile below their spawn square
+    ldy e_type,x
+    lda et_move,y
+    cmp #5
+    bne se_y
+    sec
+    lda e_ylo,x
+    sbc #5
+    sta e_ylo,x
+    bcs se_y
+    dec e_yhi,x
+se_y:
     sec
     rts
 
@@ -3218,7 +3234,9 @@ place_sprites:
     ldx #7
 ps_loop:
     lda e_kind,x
-    beq ps_next
+    bne rx_7
+    jmp ps_next
+rx_7:
     ; sx = ex - view_x + OFFX
     sec
     lda e_xlo,x
@@ -3236,10 +3254,14 @@ ps_loop:
     sta t1
     beq ps_xok
     cmp #1
-    bne ps_next
+    beq rx_8
+    jmp ps_next
+rx_8:
     lda t0
     cmp #88
-    bcs ps_next
+    bcc rx_9
+    jmp ps_next
+rx_9:
 ps_xok:
     sec
     lda e_ylo,x
@@ -3247,7 +3269,9 @@ ps_xok:
     sta t2
     lda e_yhi,x
     sbc view_y+1
-    bne ps_next
+    beq rx_10
+    jmp ps_next
+rx_10:
     lda t2
     cmp #<(WIN_PXH-6)
     bcs ps_next
@@ -3272,7 +3296,44 @@ ps_m0:
     ora sh_mc
     sta sh_mc
 ps_m1:
+    ; animation frame: base + ((fcount >> rate) & mask); the player only animates while moving
+    lda #0
+    sta t3
+    lda spr_fmask,y
+    beq ps_nf
+    cpx #0
+    bne ps_an
+    lda moving
+    beq ps_nf
+ps_an:
+    lda fcount
+    sta t3
+    lda spr_rate,y
+    beq ps_r0
+    sta t4
+ps_rs:
+    lsr t3
+    dec t4
+    bne ps_rs
+ps_r0:
+    lda t3
+    and spr_fmask,y
+    sta t3
+ps_nf:
+    ; left-facing copies follow the right-facing frames
+    lda spr_left,y
+    beq ps_nl
+    lda e_dir,x
+    cmp #5
+    bcc ps_nl
+    lda spr_fmask,y
+    sec
+    adc t3
+    sta t3
+ps_nl:
     tya
+    clc
+    adc t3
     clc
     adc #128
     sta sh_ptr,x
@@ -3502,6 +3563,7 @@ fine_x:    .fill 1,0
 fine_y:    .fill 1,0
 dvx:       .fill 1,0
 coarse:    .fill 1,0
+moving:    .fill 1,0
 fl_ox:     .fill 2,0
 fl_oy:     .fill 2,0
 end_t:     .fill 1,0

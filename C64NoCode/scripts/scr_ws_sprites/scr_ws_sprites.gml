@@ -272,6 +272,42 @@ function ws_sprites_draw(_x1, _y1, _x2, _y2)
     if (set_val(_s, "preview", ui_colour_drop("spr_prev", _fx, _y + 18, _fw, 32, _s.preview, "Preview colour|The colour used while drawing. Each actor picks its own colour on the Actors page."), "sprprev")) { spr_dirty[spr_sel] = true; }
     _y += 62;
 
+    // ---- animation ----
+    ui_heading(_fx, _y, "Animation (frames follow this slot)");
+    var _half2 = floor((_fw - 12) / 2);
+    var _fi = 0;
+    if (_s.frames >= 2) { _fi = 1; }
+    if (_s.frames >= 4) { _fi = 2; }
+    var _nfi = ui_dropdown("spr_frames", _fx, _y + 18, _half2, 30, ["1 frame", "2 frames", "4 frames"], _fi, "Animation frames|How many sprite slots, starting with this one, play as an animation. Draw the other frames in the next slots.");
+    var _fvals = [1, 2, 4];
+    set_val(_s, "frames", _fvals[_nfi], "sprframes");
+    set_val(_s, "anim_speed", ui_dropdown("spr_aspeed", _fx + _half2 + 12, _y + 18, _half2, 30, ["Every frame", "Every 2nd", "Every 4th", "Every 8th", "Every 16th", "Every 32nd"], clamp(_s.anim_speed, 0, 5), "Animation speed|How often the picture changes (50 frames = 1 second). Players only animate while moving."), "sprspeed");
+    _y += 56;
+    set_val(_s, "left", ui_toggle("spr_left", _fx, _y, "Has left-facing frames", _s.left, "Left-facing frames|When on, the frames straight after the animation are used while the actor faces left. Use the button below to make them."), "sprleft");
+    _y += 32;
+    if (ui_button("spr_mkleft", _fx, _y, _fw, 30, "Make left-facing copies", "Make left-facing copies|Copies this animation's frames, mirrored, into the slots right after it and switches 'Has left-facing frames' on. You can Undo this.", BTN_GHOST))
+    {
+        var _n = max(1, _s.frames);
+        if (spr_sel + _n * 2 <= SPR_COUNT)
+        {
+            undo_mark("sprleft" + string(current_time));
+            for (var f = 0; f < _n; f++)
+            {
+                var _src = proj.sprites[spr_sel + f];
+                var _cp = struct_overlay(sprite_new(""), json_parse(json_stringify(_src)));
+                _cp.name = _src.name + " left";
+                _cp.frames = 1;
+                _cp.left = false;
+                spr_transform(_cp, "fliph");
+                proj.sprites[spr_sel + _n + f] = _cp;
+                spr_dirty[spr_sel + _n + f] = true;
+            }
+            _s.left = true;
+            toast("Left-facing frames made in slots " + string(spr_sel + _n + 1) + "-" + string(spr_sel + _n * 2), 0);
+        }
+        else { toast("Not enough free slots after this sprite", 1); }
+    }
+    _y += 42;
     ui_heading(_fx, _y, "Change the whole sprite");
     _y += 18;
     var _bw = floor((_fw - 16) / 3);
@@ -330,10 +366,16 @@ function ws_sprites_draw(_x1, _y1, _x2, _y2)
     _y += 46;
     if (_y + 70 < _y2)
     {
-        ui_heading(_fx, _y, "Actual size");
+        ui_heading(_fx, _y, "Actual size (animated)");
         ui_inset(_fx, _y + 18, _fx + _fw, min(_y2 - 14, _y + 18 + 21 * 3 + 16), 8);
-        draw_sprite_c64(spr_sel, _fx + 10, _y + 26, 1, _s.preview, 1);
-        draw_sprite_c64(spr_sel, _fx + 50, _y + 26, 2, _s.preview, 1);
-        if (_fw > 200) { draw_sprite_c64(spr_sel, _fx + 112, _y + 26, 3, _s.preview, 1); }
+        var _af = spr_sel;
+        if (_s.frames > 1)
+        {
+            var _tick = floor(current_time / 20) >> clamp(_s.anim_speed, 0, 5);
+            _af = min(SPR_COUNT - 1, spr_sel + (_tick mod _s.frames));
+        }
+        draw_sprite_c64(_af, _fx + 10, _y + 26, 1, _s.preview, 1);
+        draw_sprite_c64(_af, _fx + 50, _y + 26, 2, _s.preview, 1);
+        if (_fw > 200) { draw_sprite_c64(_af, _fx + 112, _y + 26, 3, _s.preview, 1); }
     }
 }

@@ -194,7 +194,7 @@ function engine_codegen(_p)
         ["SCROLL_H", _sh], ["SCROLL_V", _sv], ["FLIP", _flip], ["FOLLOW", _follow],
         ["AUTO_H", _auto_h], ["AUTO_V", _auto_v], ["AUTODIV", _autodiv[clamp(_e.auto_speed, 0, 2)]],
         ["WTOP", _wtop], ["WROWS", _wrows], ["HUDROW", 0], ["FULLCOL", _e.fullcol],
-        ["WINCOL", _e.wincol], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", 8 | _mcbit],
+        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", 8 | _mcbit],
         ["BORDER", _e.border], ["BG", _e.bg], ["MC1", _e.mc1], ["MC2", _e.mc2], ["SMC1", _e.smc1], ["SMC2", _e.smc2],
         ["PSPEED", clamp(_e.pspeed, 1, 4)], ["JUMPV", clamp(_e.jumpv, 2, 9)], ["GRAVDIV", _gravdiv[clamp(_e.grav, 0, 2)]],
         ["MAXFALL", clamp(_e.maxfall, 2, 8)], ["WEAPON_ON", (_wpn > 0)], ["WEAPON_DOUBLE", (_wpn == 2)], ["WEAPON_SPREAD", (_wpn == 3)],
@@ -317,6 +317,28 @@ function engine_codegen(_p)
     }
     array_push(L, "spr_mc:");
     eng_emit_bytes(L, _smc);
+    // animation tables
+    var _fm = [];
+    var _rt = [];
+    var _lf = [];
+    for (var s2 = 0; s2 < 32; s2++)
+    {
+        var _sp = _p.sprites[min(s2, array_length(_p.sprites) - 1)];
+        var _m = 0;
+        if (_sp.frames >= 4) { _m = 3; }
+        else { if (_sp.frames >= 2) { _m = 1; } }
+        array_push(_fm, _m);
+        array_push(_rt, clamp(_sp.anim_speed, 0, 5));
+        var _l = 0;
+        if (_sp.left) { _l = 1; }
+        array_push(_lf, _l);
+    }
+    array_push(L, "spr_fmask:");
+    eng_emit_bytes(L, _fm);
+    array_push(L, "spr_rate:");
+    eng_emit_bytes(L, _rt);
+    array_push(L, "spr_left:");
+    eng_emit_bytes(L, _lf);
 
     // levels
     var _nl = max(1, min(8, array_length(_p.levels)));
@@ -432,6 +454,13 @@ function engine_codegen(_p)
     }
     array_push(L, "data_end:");
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L };
+}
+
+/// Colour RAM value for the fixed-colour window (multicolour chars need bit 3)
+function eng_wincol(_e)
+{
+    if (_e.mc) { return (_e.wincol & 7) | 8; }
+    return _e.wincol;
 }
 
 function eng_bcd2(_n)
