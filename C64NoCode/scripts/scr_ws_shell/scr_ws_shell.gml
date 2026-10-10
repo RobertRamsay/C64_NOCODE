@@ -1,0 +1,133 @@
+/// C64 NO-CODE STUDIO - top bar, workspace switching, shortcuts
+
+#macro WS_HOME 0
+#macro WS_SCREEN 1
+#macro WS_SPRITES 2
+#macro WS_ACTORS 3
+#macro WS_LOGIC 4
+#macro WS_SOUND 5
+#macro WS_BUILD 6
+#macro WS_COUNT 7
+
+function ws_set(_i)
+{
+    if (ws == _i) { return; }
+    ws = _i;
+    ui_focus = "";
+    ui_popup_open = false;
+    if (!tut_active && auto_tutorials && !ws_seen[_i])
+    {
+        ws_seen[_i] = true;
+        settings_save();
+        tut_start(_i);
+    }
+}
+
+function draw_logo(_x, _y)
+{
+    // rainbow badge in the spirit of the breadbin stripes
+    var _w = 46;
+    var _h = 34;
+    ui_rrect(_x, _y, _x + _w, _y + _h, 9, make_colour_rgb(70, 78, 92), make_colour_rgb(40, 46, 56), 1);
+    var _stripes = [make_colour_rgb(222, 72, 72), make_colour_rgb(240, 150, 60), make_colour_rgb(240, 210, 80), make_colour_rgb(90, 190, 110), make_colour_rgb(80, 140, 230)];
+    for (var i = 0; i < 5; i++)
+    {
+        var _sx = _x + 22 + i * 4;
+        draw_set_colour(_stripes[i]);
+        draw_primitive_begin(pr_trianglestrip);
+        draw_vertex(_sx, _y + _h - 4);
+        draw_vertex(_sx + 3, _y + _h - 4);
+        draw_vertex(_sx + 10, _y + 4);
+        draw_vertex(_sx + 13, _y + 4);
+        draw_primitive_end();
+    }
+    ui_text(_x + 6, _y + _h * 0.5, "64", c_white, fa_left, fa_middle, global.f_bold, 1);
+    ui_rrect_line(_x, _y, _x + _w, _y + _h, 9, global.TH.panel_edge, 0.8, 1);
+    ui_text(_x + _w + 12, _y + 4, "C64 NO-CODE", global.TH.text, fa_left, fa_top, global.f_bold, 1);
+    ui_text(_x + _w + 12, _y + 19, "STUDIO", global.TH.accent, fa_left, fa_top, global.f_small, 1);
+}
+
+function draw_topbar(_gw)
+{
+    ui_rrect(0, -20, _gw, 60, 0, global.TH.bar_top, global.TH.bar_bot, 1);
+    draw_line_colour(0, 60, _gw, 60, global.TH.panel_edge, global.TH.panel_edge);
+    draw_set_alpha(0.25);
+    draw_line_colour(0, 61, _gw, 61, c_black, c_black);
+    draw_set_alpha(1);
+    draw_logo(14, 13);
+
+    var _names = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build"];
+    var _help = [
+        "Home|Start here: open or create projects, take the guided tour and set game-wide options like lives and score.",
+        "Screen|Paint the background screen with C64 characters and colours, or type text straight onto it.",
+        "Sprites|Draw up to 8 sprites pixel by pixel. These become the pictures for your actors.",
+        "Actors|Place the things that move: the player, enemies and pickups. Choose how each one behaves.",
+        "Logic|Make the game rules in plain English: WHEN something happens, DO something.",
+        "Sound|Design up to 8 sound effects with the C64's SID chip and preview them instantly.",
+        "Build|Turn your game into a real C64 program (.PRG) and play it in VICE or on real hardware."
+    ];
+    var _tw = 94;
+    var _tx = 210;
+    var _avail = _gw - 210 - 360;
+    if (_avail < _tw * WS_COUNT) { _tw = max(70, floor(_avail / WS_COUNT)); }
+    ui_rrect(_tx - 6, 11, _tx + _tw * WS_COUNT + 6, 49, 19, global.TH.inset_top, global.TH.inset_bot, 0.8);
+    for (var i = 0; i < WS_COUNT; i++)
+    {
+        if (ui_tab("tab_" + string(i), _tx + i * _tw, 14, _tw - 2, 32, _names[i], ws == i, _help[i]))
+        {
+            ws_set(i);
+        }
+    }
+
+    var _rx = _gw - 14;
+    _rx -= 110;
+    if (ui_button("top_tutorial", _rx, 14, 110, 32, "Tutorial (F1)", "Tutorial|Shows a step-by-step guide for the page you are on. Every page has its own tutorial.", BTN_ACCENT))
+    {
+        tut_start(ws);
+    }
+    _rx -= 92;
+    var _hlab = "Helpers off";
+    var _hsty = BTN_NORMAL;
+    if (helpers_on)
+    {
+        _hlab = "Helpers on";
+        _hsty = BTN_ON;
+    }
+    if (ui_button("top_helpers", _rx, 14, 86, 32, _hlab, "Hover helpers|When on, resting the mouse on any control draws guide lines and a help bubble explaining it.", _hsty))
+    {
+        helpers_on = !helpers_on;
+        settings_save();
+    }
+    _rx -= 70;
+    if (ui_button("top_redo", _rx, 14, 64, 32, "Redo", "Redo|Puts back the last change you undid. Shortcut: Ctrl+Y.", BTN_GHOST))
+    {
+        redo_do();
+    }
+    _rx -= 70;
+    if (ui_button("top_undo", _rx, 14, 64, 32, "Undo", "Undo|Takes back your last change. Shortcut: Ctrl+Z.", BTN_GHOST))
+    {
+        undo_do();
+    }
+}
+
+function shortcuts_step()
+{
+    if (ui_focus != "") { return; }
+    var _ctrl = keyboard_check(vk_control);
+    if (_ctrl && keyboard_check_pressed(ord("Z"))) { undo_do(); }
+    if (_ctrl && keyboard_check_pressed(ord("Y"))) { redo_do(); }
+    if (_ctrl && keyboard_check_pressed(ord("S"))) { home_save(false); }
+    if (_ctrl && keyboard_check_pressed(ord("B"))) { build_ws_build(false); }
+    if (keyboard_check_pressed(vk_f1))
+    {
+        if (tut_active) { tut_active = false; }
+        else { tut_start(ws); }
+    }
+    if (!tut_active && !_ctrl && ws != WS_SCREEN)
+    {
+        for (var i = 0; i < WS_COUNT; i++)
+        {
+            if (keyboard_check_pressed(ord(string(i + 1)))) { ws_set(i); }
+        }
+    }
+}
