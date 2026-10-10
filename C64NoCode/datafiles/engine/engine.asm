@@ -690,6 +690,12 @@ compute_disp:
 ; ---------------------------------------------------------------------
 ; called right after the window has been drawn (IRQ2)
 scroll_apply:
+    ; the new fine scroll must be in place before IRQ1 of the coming frame;
+    ; the coarse shift below races the beam top-down and finishes ahead of it
+    lda new_d016
+    sta disp_d016
+    lda new_d011
+    sta disp_d011
     lda pend
     beq sa_done
     .if FLIP
@@ -722,10 +728,6 @@ sa3:
 sa_done:
     lda #0
     sta pend
-    lda new_d016
-    sta disp_d016
-    lda new_d011
-    sta disp_d011
     rts
 
 ; move view by (dvx,dvy) signed bytes (|d|<=7), set pend flags

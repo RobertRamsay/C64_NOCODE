@@ -563,7 +563,7 @@ function tpl_rock_digger()
 {
     var _p = tpl_base("Rock Digger", KIND_CAVE, SCROLL_8);
     var _e = _p.eng;
-    _e.auto = false; _e.wtop = 2; _e.wrows = 14; _e.fullcol = true; _e.weapon = 0;
+    _e.auto = false; _e.wtop = 2; _e.wrows = 12; _e.fullcol = true; _e.weapon = 0;
     _e.pspr = 11; _e.pcol = 5; _e.border = 0; _e.bg = 0; _e.smc1 = 9; _e.smc2 = 1; _e.hudcol = 7;
     _p.sfx[0].name = "Diamond"; sfx_apply_preset(_p.sfx[0], 0);
     var _dirt = tpl_tile(_p, "Dirt", "dirt", 8, TA_DIG, 0);

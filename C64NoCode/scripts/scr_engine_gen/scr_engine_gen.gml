@@ -144,9 +144,11 @@ function eng_cycle_budget(_e)
             if ((r + 1) * _row_cost > _lead_cycles + r * 464) { _tear = true; }
         }
     }
-    if (_e.scroll == SCROLL_V)
+    if (_e.scroll == SCROLL_V || _e.scroll == SCROLL_8)
     {
-        if (_shift > _lead_cycles) { _tear = true; }
+        // scrolling up copies bottom-up and redraws row 0 last: all of it must finish before the window top
+        var _vcost = (_rows - 1) * 40 * _per_char + 2600 + 400;
+        if (_vcost > _lead_cycles) { _tear = true; }
     }
     return { shift : _shift + _draw, logic : _logic, total : _total, frame : _frame, normal : _full, tear : _tear, fits : (_total <= _frame) };
 }

@@ -1,0 +1,59 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index b480341..a55320e 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -690,6 +690,12 @@ compute_disp:
+ ; ---------------------------------------------------------------------
+ ; called right after the window has been drawn (IRQ2)
+ scroll_apply:
++    ; the new fine scroll must be in place before IRQ1 of the coming frame;
++    ; the coarse shift below races the beam top-down and finishes ahead of it
++    lda new_d016
++    sta disp_d016
++    lda new_d011
++    sta disp_d011
+     lda pend
+     beq sa_done
+     .if FLIP
+@@ -722,10 +728,6 @@ sa3:
+ sa_done:
+     lda #0
+     sta pend
+-    lda new_d016
+-    sta disp_d016
+-    lda new_d011
+-    sta disp_d011
+     rts
+ 
+ ; move view by (dvx,dvy) signed bytes (|d|<=7), set pend flags
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index 7a3b6a1..1298a8a 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -144,9 +144,11 @@ function eng_cycle_budget(_e)
+             if ((r + 1) * _row_cost > _lead_cycles + r * 464) { _tear = true; }
+         }
+     }
+-    if (_e.scroll == SCROLL_V)
++    if (_e.scroll == SCROLL_V || _e.scroll == SCROLL_8)
+     {
+-        if (_shift > _lead_cycles) { _tear = true; }
++        // scrolling up copies bottom-up and redraws row 0 last: all of it must finish before the window top
++        var _vcost = (_rows - 1) * 40 * _per_char + 2600 + 400;
++        if (_vcost > _lead_cycles) { _tear = true; }
+     }
+     return { shift : _shift + _draw, logic : _logic, total : _total, frame : _frame, normal : _full, tear : _tear, fits : (_total <= _frame) };
+ }
+diff --git a/C64NoCode/scripts/scr_templates/scr_templates.gml b/C64NoCode/scripts/scr_templates/scr_templates.gml
+index 7585d9a..224eb22 100644
+--- a/C64NoCode/scripts/scr_templates/scr_templates.gml
++++ b/C64NoCode/scripts/scr_templates/scr_templates.gml
+@@ -563,7 +563,7 @@ function tpl_rock_digger()
+ {
+     var _p = tpl_base("Rock Digger", KIND_CAVE, SCROLL_8);
+     var _e = _p.eng;
+-    _e.auto = false; _e.wtop = 2; _e.wrows = 14; _e.fullcol = true; _e.weapon = 0;
++    _e.auto = false; _e.wtop = 2; _e.wrows = 12; _e.fullcol = true; _e.weapon = 0;
+     _e.pspr = 11; _e.pcol = 5; _e.border = 0; _e.bg = 0; _e.smc1 = 9; _e.smc2 = 1; _e.hudcol = 7;
+     _p.sfx[0].name = "Diamond"; sfx_apply_preset(_p.sfx[0], 0);
+     var _dirt = tpl_tile(_p, "Dirt", "dirt", 8, TA_DIG, 0);
