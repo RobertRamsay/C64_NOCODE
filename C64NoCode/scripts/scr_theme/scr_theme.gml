@@ -43,6 +43,21 @@ function theme_init()
     global.C64PAL_NAMES = ["Black", "White", "Red", "Cyan", "Purple", "Green", "Blue", "Yellow",
                            "Orange", "Brown", "Light red", "Dark grey", "Grey", "Light green", "Light blue", "Light grey"];
 
+    global.ui_scale = 1;
+    global.ui_sx = 1;
+    global.ui_sy = 1;
+    global.f_body  = -1;
+    global.f_bold  = -1;
+    global.f_small = -1;
+    global.f_title = -1;
+    global.f_hero  = -1;
+    fonts_load(1);
+}
+
+/// (Re)creates the fonts rasterised for the given interface scale
+function fonts_load(_scale)
+{
+    theme_free();
     global.f_body  = -1;
     global.f_bold  = -1;
     global.f_small = -1;
@@ -51,18 +66,19 @@ function theme_init()
     var _dir = working_directory + "fonts/";
     if (file_exists(_dir + "Poppins-Regular.ttf"))
     {
-        global.f_body  = font_add(_dir + "Poppins-Regular.ttf", 12, false, false, 32, 255);
-        global.f_small = font_add(_dir + "Poppins-Regular.ttf", 10, false, false, 32, 255);
+        global.f_body  = font_add(_dir + "Poppins-Regular.ttf", round(12 * _scale), false, false, 32, 255);
+        global.f_small = font_add(_dir + "Poppins-Regular.ttf", round(10 * _scale), false, false, 32, 255);
     }
     if (file_exists(_dir + "Poppins-Medium.ttf"))
     {
-        global.f_bold  = font_add(_dir + "Poppins-Medium.ttf", 12, false, false, 32, 255);
-        global.f_title = font_add(_dir + "Poppins-Medium.ttf", 16, false, false, 32, 255);
+        global.f_bold  = font_add(_dir + "Poppins-Medium.ttf", round(12 * _scale), false, false, 32, 255);
+        global.f_title = font_add(_dir + "Poppins-Medium.ttf", round(16 * _scale), false, false, 32, 255);
     }
     if (file_exists(_dir + "Poppins-Bold.ttf"))
     {
-        global.f_hero = font_add(_dir + "Poppins-Bold.ttf", 26, false, false, 32, 255);
+        global.f_hero = font_add(_dir + "Poppins-Bold.ttf", round(26 * _scale), false, false, 32, 255);
     }
+    if (global.f_body == -1)  { global.f_body  = -1; }
     if (global.f_bold == -1)  { global.f_bold  = global.f_body; }
     if (global.f_title == -1) { global.f_title = global.f_bold; }
     if (global.f_hero == -1)  { global.f_hero  = global.f_title; }
@@ -71,6 +87,7 @@ function theme_init()
 
 function theme_free()
 {
+    if (is_undefined(global.f_body)) { return; }
     var _list = [global.f_body, global.f_bold, global.f_small, global.f_title, global.f_hero];
     var _done = [];
     for (var i = 0; i < array_length(_list); i++)

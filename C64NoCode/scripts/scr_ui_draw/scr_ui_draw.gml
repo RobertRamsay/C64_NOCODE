@@ -111,7 +111,8 @@ function ui_text(_x, _y, _str, _col, _ha, _va, _font, _alpha)
     draw_set_valign(_va);
     draw_set_colour(_col);
     draw_set_alpha(_alpha);
-    draw_text(_x, _y, _str);
+    var _k = 1 / global.ui_scale;
+    draw_text_transformed(_x, _y, _str, _k, _k, 0);
     draw_set_alpha(1);
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
@@ -124,16 +125,47 @@ function ui_text_wrap(_x, _y, _str, _col, _w, _font, _alpha)
     draw_set_valign(fa_top);
     draw_set_colour(_col);
     draw_set_alpha(_alpha);
-    draw_text_ext(_x, _y, _str, -1, _w);
+    var _k = 1 / global.ui_scale;
+    draw_text_ext_transformed(_x, _y, _str, -1, _w * global.ui_scale, _k, _k, 0);
     draw_set_alpha(1);
+}
+
+// ---- resolution independence: fonts are rasterised at ui_scale and drawn at 1/ui_scale,
+// ---- so text stays sharp while the GUI layer is scaled up for 4K screens.
+function ui_sw(_str)
+{
+    return string_width(_str) / global.ui_scale;
+}
+
+function ui_sh_ext(_str, _w)
+{
+    return string_height_ext(_str, -1, _w * global.ui_scale) / global.ui_scale;
+}
+
+function ui_scissor(_x, _y, _w, _h)
+{
+    gpu_set_scissor(floor(_x * global.ui_sx), floor(_y * global.ui_sy), ceil(_w * global.ui_sx), ceil(_h * global.ui_sy));
+}
+
+function ui_scissor_reset()
+{
+    gpu_set_scissor(0, 0, window_get_width(), window_get_height());
+}
+
+/// Automatic interface scale: 1080p = 100%, 1440p = 125%, 4K = 200%
+function ui_scale_for(_ww, _wh)
+{
+    var _s = floor((_wh / 1080) * 4) / 4;
+    _s = min(_s, floor((_wh / 720) * 4) / 4, floor((_ww / 1280) * 4) / 4);
+    return max(1, _s);
 }
 
 function ui_text_fit(_str, _font, _w)
 {
     draw_set_font(_font);
-    if (string_width(_str) <= _w) { return _str; }
+    if (ui_sw(_str) <= _w) { return _str; }
     var _s = _str;
-    while (string_length(_s) > 1 && string_width(_s + "...") > _w)
+    while (string_length(_s) > 1 && ui_sw(_s + "...") > _w)
     {
         _s = string_copy(_s, 1, string_length(_s) - 1);
     }

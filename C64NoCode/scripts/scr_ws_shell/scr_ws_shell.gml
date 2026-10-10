@@ -111,6 +111,9 @@ function shortcuts_step()
     if (_ctrl && keyboard_check_pressed(ord("Y"))) { redo_do(); }
     if (_ctrl && keyboard_check_pressed(ord("S"))) { home_save(false); }
     if (_ctrl && keyboard_check_pressed(ord("B"))) { build_ws_build(false); }
+    if (_ctrl && (keyboard_check_pressed(187) || keyboard_check_pressed(vk_add))) { ui_scale_step(1); }
+    if (_ctrl && (keyboard_check_pressed(189) || keyboard_check_pressed(vk_subtract))) { ui_scale_step(-1); }
+    if (_ctrl && keyboard_check_pressed(ord("0"))) { ui_scale_pref = 0; settings_save(); toast("Interface size: auto", 0); }
     if (keyboard_check_pressed(vk_f1))
     {
         if (tut_active) { tut_active = false; }
@@ -124,6 +127,23 @@ function shortcuts_step()
             if (keyboard_check_pressed(ord(string(i + 1)))) { ws_set(_tabs[i]); }
         }
     }
+}
+
+/// Steps the interface size up or down through the preset list
+function ui_scale_step(_d)
+{
+    var _vals = global.UI_SCALE_VALUES;
+    var _cur = ui_scale_pref;
+    if (_cur == 0) { _cur = global.ui_scale; }
+    var _best = 1;
+    for (var i = 1; i < array_length(_vals); i++)
+    {
+        if (abs(_vals[i] - _cur) < abs(_vals[_best] - _cur)) { _best = i; }
+    }
+    _best = clamp(_best + _d, 1, array_length(_vals) - 1);
+    ui_scale_pref = _vals[_best];
+    settings_save();
+    toast("Interface size: " + global.UI_SCALE_NAMES[_best], 0);
 }
 
 /// Tabs shown for the current kind of project

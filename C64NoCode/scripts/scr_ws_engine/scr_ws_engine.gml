@@ -206,7 +206,7 @@ function ws_templates_draw(_x1, _y1, _x2, _y2)
         var _ph = 150;
         ui_inset(_px1, _py1, _px1 + _pw, _py1 + _ph, 10);
         tpl_draw_preview(tpl_cache[i], _px1 + 4, _py1 + 4, _pw - 8, _ph - 8);
-        ui_rrect(_cx + 12, _cy + 172, _cx + 20 + string_width(_t.kind) * 0.8 + 16, _cy + 194, 11, global.TH.accent2, make_colour_rgb(46, 140, 116), 1);
+        ui_rrect(_cx + 12, _cy + 172, _cx + 20 + ui_sw(_t.kind) * 0.8 + 16, _cy + 194, 11, global.TH.accent2, make_colour_rgb(46, 140, 116), 1);
         ui_text(_cx + 22, _cy + 183, _t.kind, make_colour_rgb(16, 30, 28), fa_left, fa_middle, global.f_small, 1);
         ui_text(_cx + 14, _cy + 202, _t.name, c_white, fa_left, fa_top, global.f_title, 1);
         ui_text_wrap(_cx + 14, _cy + 228, _t.desc, global.TH.text_dim, _cw - 28, global.f_small, 1);
@@ -968,7 +968,7 @@ function ws_map_draw(_x1, _y1, _x2, _y2)
     }
     map_sx = clamp(map_sx, 0, _maxsx);
     map_sy = clamp(map_sy, 0, _maxsy);
-    gpu_set_scissor(_vx1, _vy1, _vx2 - _vx1, _vy2 - _vy1);
+    ui_scissor(_vx1, _vy1, _vx2 - _vx1, _vy2 - _vy1);
     draw_set_colour(c64col(proj.eng.bg));
     draw_rectangle(_vx1, _vy1, min(_vx2, _vx1 + _lv.w * _z - map_sx), min(_vy2, _vy1 + _lv.h * _z - map_sy), false);
     var _tx0 = floor(map_sx / _z);
@@ -1144,7 +1144,7 @@ function ws_map_draw(_x1, _y1, _x2, _y2)
         if (map_tool != 1) { map_drawing = false; }
         map_drag_sp = false;
     }
-    gpu_set_scissor(0, 0, gui_w, gui_h);
+    ui_scissor_reset();
     ui_text(_vx1, _vy2 + 12, string(_lv.w) + " x " + string(_lv.h) + " tiles   |   " + string(array_length(_lv.spawners)) + " spawners   |   zoom " + string(_z) + "px", global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
 
     // ---- right: palette or spawner settings
@@ -1320,7 +1320,7 @@ function ws_enemies_draw(_x1, _y1, _x2, _y2)
     var _vh = min(360, _y2 - _y1 - 140);
     ui_inset(_vx, _vy, _vx + _vw, _vy + _vh, 10);
     ui_register("en_preview", _vx, _vy, _vx + _vw, _vy + _vh, "Movement preview|A rough picture of how this enemy moves and where it shoots. The real game also bounces off walls and the screen edge.");
-    gpu_set_scissor(_vx, _vy, _vw, _vh);
+    ui_scissor(_vx, _vy, _vw, _vh);
     var _dxs = [0, 1, 1, 1, 0, -1, -1, -1];
     var _dys = [-1, -1, 0, 1, 1, 1, 0, -1];
     var _sx = _vx + _vw / 2;
@@ -1369,7 +1369,7 @@ function ws_enemies_draw(_x1, _y1, _x2, _y2)
         ui_dotted_line(_sx, _sy, _fx2, _fy2, global.TH.danger, 0.9, 5);
         ui_text(_fx2, _fy2 + 12, _lab, global.TH.danger, fa_center, fa_top, global.f_small, 1);
     }
-    gpu_set_scissor(0, 0, gui_w, gui_h);
+    ui_scissor_reset();
     var _sy2 = _vy + _vh + 16;
     ui_text_wrap(_vx, _sy2, "Enemies appear from spawners you place on the Map page. Each spawner chooses a type, how many come out and how often.", global.TH.text_faint, _vw, global.f_small, 1);
 

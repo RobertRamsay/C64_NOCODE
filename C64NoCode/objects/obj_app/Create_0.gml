@@ -20,6 +20,13 @@ gui_w = max(1280, window_get_width());
 gui_h = max(720, window_get_height());
 display_set_gui_size(gui_w, gui_h);
 caption_last = "";
+win_w = 0;
+win_h = 0;
+startup_frames = 0;
+ui_scale_pref = 0;
+start_fullscreen = true;
+global.UI_SCALE_NAMES = ["Auto (fits your screen)", "100%", "125%", "150%", "175%", "200%", "250%", "300%"];
+global.UI_SCALE_VALUES = [0, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 // ---------- systems ----------
 theme_init();

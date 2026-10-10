@@ -132,6 +132,26 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
     set_val(proj, "win_text", ui_textfield("home_win", _fx, _y + 18, _fw, 32, proj.win_text, 40, "Win message|Shown when a 'You win!' action happens."), "wintext");
     _y += 74;
 
+    ui_heading(_fx, _y, "Display");
+    var _si = 0;
+    for (var sv = 1; sv < array_length(global.UI_SCALE_VALUES); sv++)
+    {
+        if (global.UI_SCALE_VALUES[sv] == ui_scale_pref) { _si = sv; }
+    }
+    var _nsi = ui_dropdown("home_scale", _fx, _y + 18, _half, 30, global.UI_SCALE_NAMES, _si, "Interface size|Makes everything bigger or smaller. Auto picks 200% on a 4K screen. Shortcuts: Ctrl + and Ctrl - (Ctrl 0 = auto).");
+    if (_nsi != _si)
+    {
+        ui_scale_pref = global.UI_SCALE_VALUES[_nsi];
+        settings_save();
+    }
+    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start full screen", start_fullscreen, "Full screen|Opens the studio filling the whole screen. F11 switches between full screen and a window at any time.");
+    if (_fs != start_fullscreen)
+    {
+        start_fullscreen = _fs;
+        settings_save();
+        window_set_fullscreen(_fs);
+    }
+    _y += 64;
     ui_heading(_fx, _y, "Studio");
     _y += 20;
     var _at = ui_toggle("home_autotut", _fx, _y, "Offer a tutorial on each new page", auto_tutorials, "Automatic tutorials|The first time you open each page its tutorial starts by itself. Turn this off once you know your way around.");

@@ -34,7 +34,7 @@ function ui_help_draw(_gw, _gh)
     // bubble
     var _bw = 300;
     draw_set_font(global.f_body);
-    var _th = string_height_ext(help_last_body, -1, _bw - 28);
+    var _th = ui_sh_ext(help_last_body, _bw - 28);
     var _bh = _th + 52;
     var _cy = (_r[1] + _r[3]) * 0.5;
     var _bx = _r[2] + 60;
@@ -124,7 +124,7 @@ function toasts_draw(_gw, _gh)
         }
         _t.a = lerp(_t.a, min(1, _t.life * 2), 0.25);
         draw_set_font(global.f_bold);
-        var _w = string_width(_t.text) + 48;
+        var _w = ui_sw(_t.text) + 48;
         var _h = 40;
         var _x = _gw - 20 - _w;
         _y -= _h + 8;

@@ -1,0 +1,464 @@
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index c2149c3..057578c 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -20,6 +20,13 @@ gui_w = max(1280, window_get_width());
+ gui_h = max(720, window_get_height());
+ display_set_gui_size(gui_w, gui_h);
+ caption_last = "";
++win_w = 0;
++win_h = 0;
++startup_frames = 0;
++ui_scale_pref = 0;
++start_fullscreen = true;
++global.UI_SCALE_NAMES = ["Auto (fits your screen)", "100%", "125%", "150%", "175%", "200%", "250%", "300%"];
++global.UI_SCALE_VALUES = [0, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+ 
+ // ---------- systems ----------
+ theme_init();
+diff --git a/C64NoCode/objects/obj_app/Step_0.gml b/C64NoCode/objects/obj_app/Step_0.gml
+index 44baa0e..7b0a86d 100644
+--- a/C64NoCode/objects/obj_app/Step_0.gml
++++ b/C64NoCode/objects/obj_app/Step_0.gml
+@@ -1,14 +1,38 @@
+ /// Window sizing, autosave, shortcuts
+ 
++// full-screen window on launch (done a frame late so the runner has a window)
++startup_frames += 1;
++if (startup_frames == 2 && start_fullscreen)
++{
++    window_set_fullscreen(true);
++}
++if (keyboard_check_pressed(vk_f11))
++{
++    window_set_fullscreen(!window_get_fullscreen());
++}
++
++// interface scale for HD / QHD / 4K
+ var _ww = window_get_width();
+ var _wh = window_get_height();
+ if (_ww > 0 && _wh > 0)
+ {
+-    if (_ww != gui_w || _wh != gui_h)
++    var _s = ui_scale_for(_ww, _wh);
++    if (ui_scale_pref > 0) { _s = max(1, min(ui_scale_pref, _ww / 1100, _wh / 640)); }
++    var _scale_changed = (_s != global.ui_scale);
++    if (_scale_changed)
++    {
++        global.ui_scale = _s;
++        fonts_load(_s);
++    }
++    if (_scale_changed || _ww != win_w || _wh != win_h)
+     {
+-        gui_w = _ww;
+-        gui_h = _wh;
++        win_w = _ww;
++        win_h = _wh;
++        gui_w = round(_ww / _s);
++        gui_h = round(_wh / _s);
+         display_set_gui_size(gui_w, gui_h);
++        global.ui_sx = _ww / gui_w;
++        global.ui_sy = _wh / gui_h;
+     }
+ }
+ 
+diff --git a/C64NoCode/options/windows/options_windows.yy b/C64NoCode/options/windows/options_windows.yy
+index 972b849..b7659df 100644
+--- a/C64NoCode/options/windows/options_windows.yy
++++ b/C64NoCode/options/windows/options_windows.yy
+@@ -2,7 +2,7 @@
+   "$GMWindowsOptions":"v2",
+   "%Name":"Windows",
+   "name":"Windows",
+-  "option_windows_allow_fullscreen_switching":false,
++  "option_windows_allow_fullscreen_switching":true,
+   "option_windows_borderless":false,
+   "option_windows_company_info":"POLYTRICITY LTD",
+   "option_windows_copyright_info":"POLYTRICITY (C) 2026",
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index 2b6d461..4f9a014 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -513,6 +513,8 @@ function settings_load()
+     proj_path = ini_read_string("paths", "project", "");
+     helpers_on = ini_read_real("ui", "helpers", 1) == 1;
+     auto_tutorials = ini_read_real("ui", "auto_tutorials", 1) == 1;
++    ui_scale_pref = ini_read_real("ui", "scale", 0);
++    start_fullscreen = ini_read_real("ui", "fullscreen", 1) == 1;
+     for (var i = 0; i < WS_COUNT; i++)
+     {
+         ws_seen[i] = ini_read_real("seen", "ws" + string(i), 0) == 1;
+@@ -532,6 +534,10 @@ function settings_save()
+     var _t = 0;
+     if (auto_tutorials) { _t = 1; }
+     ini_write_real("ui", "auto_tutorials", _t);
++    ini_write_real("ui", "scale", ui_scale_pref);
++    var _fs = 0;
++    if (start_fullscreen) { _fs = 1; }
++    ini_write_real("ui", "fullscreen", _fs);
+     for (var i = 0; i < WS_COUNT; i++)
+     {
+         var _s = 0;
+diff --git a/C64NoCode/scripts/scr_theme/scr_theme.gml b/C64NoCode/scripts/scr_theme/scr_theme.gml
+index eb55aee..7bc7e9d 100644
+--- a/C64NoCode/scripts/scr_theme/scr_theme.gml
++++ b/C64NoCode/scripts/scr_theme/scr_theme.gml
+@@ -43,6 +43,21 @@ function theme_init()
+     global.C64PAL_NAMES = ["Black", "White", "Red", "Cyan", "Purple", "Green", "Blue", "Yellow",
+                            "Orange", "Brown", "Light red", "Dark grey", "Grey", "Light green", "Light blue", "Light grey"];
+ 
++    global.ui_scale = 1;
++    global.ui_sx = 1;
++    global.ui_sy = 1;
++    global.f_body  = -1;
++    global.f_bold  = -1;
++    global.f_small = -1;
++    global.f_title = -1;
++    global.f_hero  = -1;
++    fonts_load(1);
++}
++
++/// (Re)creates the fonts rasterised for the given interface scale
++function fonts_load(_scale)
++{
++    theme_free();
+     global.f_body  = -1;
+     global.f_bold  = -1;
+     global.f_small = -1;
+@@ -51,18 +66,19 @@ function theme_init()
+     var _dir = working_directory + "fonts/";
+     if (file_exists(_dir + "Poppins-Regular.ttf"))
+     {
+-        global.f_body  = font_add(_dir + "Poppins-Regular.ttf", 12, false, false, 32, 255);
+-        global.f_small = font_add(_dir + "Poppins-Regular.ttf", 10, false, false, 32, 255);
++        global.f_body  = font_add(_dir + "Poppins-Regular.ttf", round(12 * _scale), false, false, 32, 255);
++        global.f_small = font_add(_dir + "Poppins-Regular.ttf", round(10 * _scale), false, false, 32, 255);
+     }
+     if (file_exists(_dir + "Poppins-Medium.ttf"))
+     {
+-        global.f_bold  = font_add(_dir + "Poppins-Medium.ttf", 12, false, false, 32, 255);
+-        global.f_title = font_add(_dir + "Poppins-Medium.ttf", 16, false, false, 32, 255);
++        global.f_bold  = font_add(_dir + "Poppins-Medium.ttf", round(12 * _scale), false, false, 32, 255);
++        global.f_title = font_add(_dir + "Poppins-Medium.ttf", round(16 * _scale), false, false, 32, 255);
+     }
+     if (file_exists(_dir + "Poppins-Bold.ttf"))
+     {
+-        global.f_hero = font_add(_dir + "Poppins-Bold.ttf", 26, false, false, 32, 255);
++        global.f_hero = font_add(_dir + "Poppins-Bold.ttf", round(26 * _scale), false, false, 32, 255);
+     }
++    if (global.f_body == -1)  { global.f_body  = -1; }
+     if (global.f_bold == -1)  { global.f_bold  = global.f_body; }
+     if (global.f_title == -1) { global.f_title = global.f_bold; }
+     if (global.f_hero == -1)  { global.f_hero  = global.f_title; }
+@@ -71,6 +87,7 @@ function theme_init()
+ 
+ function theme_free()
+ {
++    if (is_undefined(global.f_body)) { return; }
+     var _list = [global.f_body, global.f_bold, global.f_small, global.f_title, global.f_hero];
+     var _done = [];
+     for (var i = 0; i < array_length(_list); i++)
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index 2fef5ba..b2ae1f9 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -174,8 +174,8 @@ function tut_draw(_gw, _gh)
+     // card
+     var _cw = 420;
+     draw_set_font(global.f_body);
+-    var _bh = string_height_ext(_step.body, -1, _cw - 48);
+-    var _ch = 120 + _bh;
++    var _bh = ui_sh_ext(_step.body, _cw - 48);
++    var _ch = 144 + _bh;
+     var _cx = (_gw - _cw) / 2;
+     var _cy = (_gh - _ch) / 2;
+     if (!is_undefined(_r))
+diff --git a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+index c99da34..6e78ae1 100644
+--- a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
++++ b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+@@ -111,7 +111,8 @@ function ui_text(_x, _y, _str, _col, _ha, _va, _font, _alpha)
+     draw_set_valign(_va);
+     draw_set_colour(_col);
+     draw_set_alpha(_alpha);
+-    draw_text(_x, _y, _str);
++    var _k = 1 / global.ui_scale;
++    draw_text_transformed(_x, _y, _str, _k, _k, 0);
+     draw_set_alpha(1);
+     draw_set_halign(fa_left);
+     draw_set_valign(fa_top);
+@@ -124,16 +125,47 @@ function ui_text_wrap(_x, _y, _str, _col, _w, _font, _alpha)
+     draw_set_valign(fa_top);
+     draw_set_colour(_col);
+     draw_set_alpha(_alpha);
+-    draw_text_ext(_x, _y, _str, -1, _w);
++    var _k = 1 / global.ui_scale;
++    draw_text_ext_transformed(_x, _y, _str, -1, _w * global.ui_scale, _k, _k, 0);
+     draw_set_alpha(1);
+ }
+ 
++// ---- resolution independence: fonts are rasterised at ui_scale and drawn at 1/ui_scale,
++// ---- so text stays sharp while the GUI layer is scaled up for 4K screens.
++function ui_sw(_str)
++{
++    return string_width(_str) / global.ui_scale;
++}
++
++function ui_sh_ext(_str, _w)
++{
++    return string_height_ext(_str, -1, _w * global.ui_scale) / global.ui_scale;
++}
++
++function ui_scissor(_x, _y, _w, _h)
++{
++    gpu_set_scissor(floor(_x * global.ui_sx), floor(_y * global.ui_sy), ceil(_w * global.ui_sx), ceil(_h * global.ui_sy));
++}
++
++function ui_scissor_reset()
++{
++    gpu_set_scissor(0, 0, window_get_width(), window_get_height());
++}
++
++/// Automatic interface scale: 1080p = 100%, 1440p = 125%, 4K = 200%
++function ui_scale_for(_ww, _wh)
++{
++    var _s = floor((_wh / 1080) * 4) / 4;
++    _s = min(_s, floor((_wh / 720) * 4) / 4, floor((_ww / 1280) * 4) / 4);
++    return max(1, _s);
++}
++
+ function ui_text_fit(_str, _font, _w)
+ {
+     draw_set_font(_font);
+-    if (string_width(_str) <= _w) { return _str; }
++    if (ui_sw(_str) <= _w) { return _str; }
+     var _s = _str;
+-    while (string_length(_s) > 1 && string_width(_s + "...") > _w)
++    while (string_length(_s) > 1 && ui_sw(_s + "...") > _w)
+     {
+         _s = string_copy(_s, 1, string_length(_s) - 1);
+     }
+diff --git a/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml b/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
+index 8305593..0df6d00 100644
+--- a/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
++++ b/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
+@@ -34,7 +34,7 @@ function ui_help_draw(_gw, _gh)
+     // bubble
+     var _bw = 300;
+     draw_set_font(global.f_body);
+-    var _th = string_height_ext(help_last_body, -1, _bw - 28);
++    var _th = ui_sh_ext(help_last_body, _bw - 28);
+     var _bh = _th + 52;
+     var _cy = (_r[1] + _r[3]) * 0.5;
+     var _bx = _r[2] + 60;
+@@ -124,7 +124,7 @@ function toasts_draw(_gw, _gh)
+         }
+         _t.a = lerp(_t.a, min(1, _t.life * 2), 0.25);
+         draw_set_font(global.f_bold);
+-        var _w = string_width(_t.text) + 48;
++        var _w = ui_sw(_t.text) + 48;
+         var _h = 40;
+         var _x = _gw - 20 - _w;
+         _y -= _h + 8;
+diff --git a/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml b/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
+index ee37d33..7482949 100644
+--- a/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
++++ b/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
+@@ -229,7 +229,7 @@ function ui_label(_x, _y, _str)
+ function ui_toggle(_id, _x, _y, _label, _value, _help)
+ {
+     draw_set_font(global.f_body);
+-    var _tw = string_width(_label);
++    var _tw = ui_sw(_label);
+     var _w = 44 + 10 + _tw;
+     var _hot = ui_register(_id, _x, _y, _x + _w, _y + 24, _help);
+     var _tgt = 0;
+@@ -369,7 +369,7 @@ function ui_textfield(_id, _x, _y, _w, _h, _value, _maxlen, _help)
+     if (ui_focus == _id && (current_time div 500) mod 2 == 0)
+     {
+         draw_set_font(global.f_body);
+-        var _cx = _x + 11 + string_width(_shown);
++        var _cx = _x + 11 + ui_sw(_shown);
+         draw_line_width_colour(_cx, _y + 7, _cx, _y + _h - 7, 2, global.TH.accent, global.TH.accent);
+     }
+     return _v;
+@@ -531,7 +531,7 @@ function ui_popup_draw(_gw, _gh)
+             ui_popup_scroll = clamp(ui_popup_scroll - ui_wheel * 28, 0, _maxs);
+             ui_wheel = 0;
+         }
+-        gpu_set_scissor(_x, _y + 2, _w, _h - 4);
++        ui_scissor(_x, _y + 2, _w, _h - 4);
+         for (var i = 0; i < _n; i++)
+         {
+             var _iy = _y + 4 + i * 28 - ui_popup_scroll;
+@@ -556,7 +556,7 @@ function ui_popup_draw(_gw, _gh)
+                 ui_take_click();
+             }
+         }
+-        gpu_set_scissor(0, 0, _gw, _gh);
++        ui_scissor_reset();
+     }
+     else
+     {
+@@ -609,7 +609,7 @@ function ui_scroll_begin(_id, _x1, _y1, _x2, _y2, _content_h)
+     var _max = max(0, _content_h - (_y2 - _y1));
+     _off = clamp(_off, 0, _max);
+     ds_map_replace(ui_scroll, _id, _off);
+-    gpu_set_scissor(_x1, _y1, _x2 - _x1, _y2 - _y1);
++    ui_scissor(_x1, _y1, _x2 - _x1, _y2 - _y1);
+     ui_clip = [_x1, _y1, _x2, _y2];
+     ui_clip_on = true;
+     return _off;
+@@ -617,7 +617,7 @@ function ui_scroll_begin(_id, _x1, _y1, _x2, _y2, _content_h)
+ 
+ function ui_scroll_end(_id, _x1, _y1, _x2, _y2, _content_h)
+ {
+-    gpu_set_scissor(0, 0, gui_w, gui_h);
++    ui_scissor_reset();
+     ui_clip_on = false;
+     var _off = ds_map_find_value(ui_scroll, _id);
+     if (is_undefined(_off)) { _off = 0; }
+diff --git a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+index 7fa283b..21437d7 100644
+--- a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
++++ b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+@@ -178,7 +178,7 @@ function ws_actors_draw(_x1, _y1, _x2, _y2)
+         ui_dotted_line(_gx, _fy, _gx, _fy + _fh, global.TH.warn, 0.7, 5);
+         var _txt = "X " + string(_ag.x) + "   Y " + string(_ag.y);
+         draw_set_font(global.f_small);
+-        var _tw = string_width(_txt) + 20;
++        var _tw = ui_sw(_txt) + 20;
+         ui_rrect(_gx + 14, _gy + 14, _gx + 14 + _tw, _gy + 38, 10, global.TH.btn_top, global.TH.btn_bot, 0.95);
+         ui_text(_gx + 24, _gy + 26, _txt, global.TH.warn, fa_left, fa_middle, global.f_small, 1);
+     }
+diff --git a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+index ea1d79c..3db3c8a 100644
+--- a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
++++ b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+@@ -206,7 +206,7 @@ function ws_templates_draw(_x1, _y1, _x2, _y2)
+         var _ph = 150;
+         ui_inset(_px1, _py1, _px1 + _pw, _py1 + _ph, 10);
+         tpl_draw_preview(tpl_cache[i], _px1 + 4, _py1 + 4, _pw - 8, _ph - 8);
+-        ui_rrect(_cx + 12, _cy + 172, _cx + 20 + string_width(_t.kind) * 0.8 + 16, _cy + 194, 11, global.TH.accent2, make_colour_rgb(46, 140, 116), 1);
++        ui_rrect(_cx + 12, _cy + 172, _cx + 20 + ui_sw(_t.kind) * 0.8 + 16, _cy + 194, 11, global.TH.accent2, make_colour_rgb(46, 140, 116), 1);
+         ui_text(_cx + 22, _cy + 183, _t.kind, make_colour_rgb(16, 30, 28), fa_left, fa_middle, global.f_small, 1);
+         ui_text(_cx + 14, _cy + 202, _t.name, c_white, fa_left, fa_top, global.f_title, 1);
+         ui_text_wrap(_cx + 14, _cy + 228, _t.desc, global.TH.text_dim, _cw - 28, global.f_small, 1);
+@@ -968,7 +968,7 @@ function ws_map_draw(_x1, _y1, _x2, _y2)
+     }
+     map_sx = clamp(map_sx, 0, _maxsx);
+     map_sy = clamp(map_sy, 0, _maxsy);
+-    gpu_set_scissor(_vx1, _vy1, _vx2 - _vx1, _vy2 - _vy1);
++    ui_scissor(_vx1, _vy1, _vx2 - _vx1, _vy2 - _vy1);
+     draw_set_colour(c64col(proj.eng.bg));
+     draw_rectangle(_vx1, _vy1, min(_vx2, _vx1 + _lv.w * _z - map_sx), min(_vy2, _vy1 + _lv.h * _z - map_sy), false);
+     var _tx0 = floor(map_sx / _z);
+@@ -1144,7 +1144,7 @@ function ws_map_draw(_x1, _y1, _x2, _y2)
+         if (map_tool != 1) { map_drawing = false; }
+         map_drag_sp = false;
+     }
+-    gpu_set_scissor(0, 0, gui_w, gui_h);
++    ui_scissor_reset();
+     ui_text(_vx1, _vy2 + 12, string(_lv.w) + " x " + string(_lv.h) + " tiles   |   " + string(array_length(_lv.spawners)) + " spawners   |   zoom " + string(_z) + "px", global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
+ 
+     // ---- right: palette or spawner settings
+@@ -1320,7 +1320,7 @@ function ws_enemies_draw(_x1, _y1, _x2, _y2)
+     var _vh = min(360, _y2 - _y1 - 140);
+     ui_inset(_vx, _vy, _vx + _vw, _vy + _vh, 10);
+     ui_register("en_preview", _vx, _vy, _vx + _vw, _vy + _vh, "Movement preview|A rough picture of how this enemy moves and where it shoots. The real game also bounces off walls and the screen edge.");
+-    gpu_set_scissor(_vx, _vy, _vw, _vh);
++    ui_scissor(_vx, _vy, _vw, _vh);
+     var _dxs = [0, 1, 1, 1, 0, -1, -1, -1];
+     var _dys = [-1, -1, 0, 1, 1, 1, 0, -1];
+     var _sx = _vx + _vw / 2;
+@@ -1369,7 +1369,7 @@ function ws_enemies_draw(_x1, _y1, _x2, _y2)
+         ui_dotted_line(_sx, _sy, _fx2, _fy2, global.TH.danger, 0.9, 5);
+         ui_text(_fx2, _fy2 + 12, _lab, global.TH.danger, fa_center, fa_top, global.f_small, 1);
+     }
+-    gpu_set_scissor(0, 0, gui_w, gui_h);
++    ui_scissor_reset();
+     var _sy2 = _vy + _vh + 16;
+     ui_text_wrap(_vx, _sy2, "Enemies appear from spawners you place on the Map page. Each spawner chooses a type, how many come out and how often.", global.TH.text_faint, _vw, global.f_small, 1);
+ 
+diff --git a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+index 023b367..976402d 100644
+--- a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
++++ b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+@@ -132,6 +132,26 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
+     set_val(proj, "win_text", ui_textfield("home_win", _fx, _y + 18, _fw, 32, proj.win_text, 40, "Win message|Shown when a 'You win!' action happens."), "wintext");
+     _y += 74;
+ 
++    ui_heading(_fx, _y, "Display");
++    var _si = 0;
++    for (var sv = 1; sv < array_length(global.UI_SCALE_VALUES); sv++)
++    {
++        if (global.UI_SCALE_VALUES[sv] == ui_scale_pref) { _si = sv; }
++    }
++    var _nsi = ui_dropdown("home_scale", _fx, _y + 18, _half, 30, global.UI_SCALE_NAMES, _si, "Interface size|Makes everything bigger or smaller. Auto picks 200% on a 4K screen. Shortcuts: Ctrl + and Ctrl - (Ctrl 0 = auto).");
++    if (_nsi != _si)
++    {
++        ui_scale_pref = global.UI_SCALE_VALUES[_nsi];
++        settings_save();
++    }
++    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start full screen", start_fullscreen, "Full screen|Opens the studio filling the whole screen. F11 switches between full screen and a window at any time.");
++    if (_fs != start_fullscreen)
++    {
++        start_fullscreen = _fs;
++        settings_save();
++        window_set_fullscreen(_fs);
++    }
++    _y += 64;
+     ui_heading(_fx, _y, "Studio");
+     _y += 20;
+     var _at = ui_toggle("home_autotut", _fx, _y, "Offer a tutorial on each new page", auto_tutorials, "Automatic tutorials|The first time you open each page its tutorial starts by itself. Turn this off once you know your way around.");
+diff --git a/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml b/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
+index 9a06de0..3da6fee 100644
+--- a/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
++++ b/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
+@@ -114,7 +114,7 @@ function ws_screen_draw(_x1, _y1, _x2, _y2)
+         draw_rectangle_colour(_sx + _col * _cs - 1, _sy + _row * _cs - 1, _sx + _col * _cs + _cs, _sy + _row * _cs + _cs, c_white, c_white, c_white, c_white, true);
+         var _badge = "Row " + string(_row) + "  Col " + string(_col) + "  Char " + string(proj.chars[_cell]);
+         draw_set_font(global.f_small);
+-        var _bw = string_width(_badge) + 20;
++        var _bw = ui_sw(_badge) + 20;
+         ui_rrect(_fx, _fy + _fh + 10, _fx + _bw, _fy + _fh + 34, 10, global.TH.btn_top, global.TH.btn_bot, 0.95);
+         ui_text(_fx + 10, _fy + _fh + 22, _badge, global.TH.text, fa_left, fa_middle, global.f_small, 1);
+     }
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index 3c1c70f..5d95c64 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -111,6 +111,9 @@ function shortcuts_step()
+     if (_ctrl && keyboard_check_pressed(ord("Y"))) { redo_do(); }
+     if (_ctrl && keyboard_check_pressed(ord("S"))) { home_save(false); }
+     if (_ctrl && keyboard_check_pressed(ord("B"))) { build_ws_build(false); }
++    if (_ctrl && (keyboard_check_pressed(187) || keyboard_check_pressed(vk_add))) { ui_scale_step(1); }
++    if (_ctrl && (keyboard_check_pressed(189) || keyboard_check_pressed(vk_subtract))) { ui_scale_step(-1); }
++    if (_ctrl && keyboard_check_pressed(ord("0"))) { ui_scale_pref = 0; settings_save(); toast("Interface size: auto", 0); }
+     if (keyboard_check_pressed(vk_f1))
+     {
+         if (tut_active) { tut_active = false; }
+@@ -126,6 +129,23 @@ function shortcuts_step()
+     }
+ }
+ 
++/// Steps the interface size up or down through the preset list
++function ui_scale_step(_d)
++{
++    var _vals = global.UI_SCALE_VALUES;
++    var _cur = ui_scale_pref;
++    if (_cur == 0) { _cur = global.ui_scale; }
++    var _best = 1;
++    for (var i = 1; i < array_length(_vals); i++)
++    {
++        if (abs(_vals[i] - _cur) < abs(_vals[_best] - _cur)) { _best = i; }
++    }
++    _best = clamp(_best + _d, 1, array_length(_vals) - 1);
++    ui_scale_pref = _vals[_best];
++    settings_save();
++    toast("Interface size: " + global.UI_SCALE_NAMES[_best], 0);
++}
++
+ /// Tabs shown for the current kind of project
+ function ws_tabs()
+ {

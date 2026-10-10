@@ -174,8 +174,8 @@ function tut_draw(_gw, _gh)
     // card
     var _cw = 420;
     draw_set_font(global.f_body);
-    var _bh = string_height_ext(_step.body, -1, _cw - 48);
-    var _ch = 120 + _bh;
+    var _bh = ui_sh_ext(_step.body, _cw - 48);
+    var _ch = 144 + _bh;
     var _cx = (_gw - _cw) / 2;
     var _cy = (_gh - _ch) / 2;
     if (!is_undefined(_r))

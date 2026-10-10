@@ -513,6 +513,8 @@ function settings_load()
     proj_path = ini_read_string("paths", "project", "");
     helpers_on = ini_read_real("ui", "helpers", 1) == 1;
     auto_tutorials = ini_read_real("ui", "auto_tutorials", 1) == 1;
+    ui_scale_pref = ini_read_real("ui", "scale", 0);
+    start_fullscreen = ini_read_real("ui", "fullscreen", 1) == 1;
     for (var i = 0; i < WS_COUNT; i++)
     {
         ws_seen[i] = ini_read_real("seen", "ws" + string(i), 0) == 1;
@@ -532,6 +534,10 @@ function settings_save()
     var _t = 0;
     if (auto_tutorials) { _t = 1; }
     ini_write_real("ui", "auto_tutorials", _t);
+    ini_write_real("ui", "scale", ui_scale_pref);
+    var _fs = 0;
+    if (start_fullscreen) { _fs = 1; }
+    ini_write_real("ui", "fullscreen", _fs);
     for (var i = 0; i < WS_COUNT; i++)
     {
         var _s = 0;

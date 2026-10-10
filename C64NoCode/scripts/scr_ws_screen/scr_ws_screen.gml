@@ -114,7 +114,7 @@ function ws_screen_draw(_x1, _y1, _x2, _y2)
         draw_rectangle_colour(_sx + _col * _cs - 1, _sy + _row * _cs - 1, _sx + _col * _cs + _cs, _sy + _row * _cs + _cs, c_white, c_white, c_white, c_white, true);
         var _badge = "Row " + string(_row) + "  Col " + string(_col) + "  Char " + string(proj.chars[_cell]);
         draw_set_font(global.f_small);
-        var _bw = string_width(_badge) + 20;
+        var _bw = ui_sw(_badge) + 20;
         ui_rrect(_fx, _fy + _fh + 10, _fx + _bw, _fy + _fh + 34, 10, global.TH.btn_top, global.TH.btn_bot, 0.95);
         ui_text(_fx + 10, _fy + _fh + 22, _badge, global.TH.text, fa_left, fa_middle, global.f_small, 1);
     }

@@ -178,7 +178,7 @@ function ws_actors_draw(_x1, _y1, _x2, _y2)
         ui_dotted_line(_gx, _fy, _gx, _fy + _fh, global.TH.warn, 0.7, 5);
         var _txt = "X " + string(_ag.x) + "   Y " + string(_ag.y);
         draw_set_font(global.f_small);
-        var _tw = string_width(_txt) + 20;
+        var _tw = ui_sw(_txt) + 20;
         ui_rrect(_gx + 14, _gy + 14, _gx + 14 + _tw, _gy + 38, 10, global.TH.btn_top, global.TH.btn_bot, 0.95);
         ui_text(_gx + 24, _gy + 26, _txt, global.TH.warn, fa_left, fa_middle, global.f_small, 1);
     }
