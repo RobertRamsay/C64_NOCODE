@@ -4,6 +4,10 @@ sfx_preview_stop();
 spr_cache_free();
 if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
 if (surface_exists(tile_atlas)) { surface_free(tile_atlas); }
+for (var tp = 0; tp < array_length(tpl_prev); tp++)
+{
+    if (surface_exists(tpl_prev[tp])) { surface_free(tpl_prev[tp]); }
+}
 ds_map_destroy(ui_rects);
 ds_map_destroy(ui_anim);
 ds_map_destroy(ui_scroll);

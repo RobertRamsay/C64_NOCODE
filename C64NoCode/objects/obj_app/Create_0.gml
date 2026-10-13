@@ -129,6 +129,7 @@ pchars_sprite = -1;
 tile_atlas = -1;
 atlas_dirty = true;
 tpl_cache = [];
+tpl_prev = [];
 ch_sel = 128;
 ch_colour = 1;
 ch_mc_view = false;

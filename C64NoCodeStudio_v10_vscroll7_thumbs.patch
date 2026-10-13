@@ -1,0 +1,251 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index ad2313d..960a25d 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -198,6 +198,17 @@ irq:
+     pha
+     lda irq_stage
+     bne irq_b
++    ; YSCROLL 7 matches line 63 itself (63 & 7 = 7): writing it there would start a
++    ; badline mid-line. For that one value wait for the next line, then write.
++    lda disp_d011
++    and #7
++    cmp #7
++    bne irq_w
++irq_wt:
++    lda $d012
++    cmp #IRQ1_LINE+1
++    bne irq_wt
++irq_w:
+     lda disp_d011
+     sta $d011
+     lda disp_d016
+diff --git a/C64NoCode/objects/obj_app/CleanUp_0.gml b/C64NoCode/objects/obj_app/CleanUp_0.gml
+index dd17b6e..bd59a92 100644
+--- a/C64NoCode/objects/obj_app/CleanUp_0.gml
++++ b/C64NoCode/objects/obj_app/CleanUp_0.gml
+@@ -4,6 +4,10 @@ sfx_preview_stop();
+ spr_cache_free();
+ if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
+ if (surface_exists(tile_atlas)) { surface_free(tile_atlas); }
++for (var tp = 0; tp < array_length(tpl_prev); tp++)
++{
++    if (surface_exists(tpl_prev[tp])) { surface_free(tpl_prev[tp]); }
++}
+ ds_map_destroy(ui_rects);
+ ds_map_destroy(ui_anim);
+ ds_map_destroy(ui_scroll);
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index 0541d8f..32d95b3 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -129,6 +129,7 @@ pchars_sprite = -1;
+ tile_atlas = -1;
+ atlas_dirty = true;
+ tpl_cache = [];
++tpl_prev = [];
+ ch_sel = 128;
+ ch_colour = 1;
+ ch_mc_view = false;
+diff --git a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+index 9633421..b707b42 100644
+--- a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
++++ b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+@@ -184,7 +184,7 @@ function ws_templates_draw(_x1, _y1, _x2, _y2)
+         var _pw = _cw - 24;
+         var _ph = 150;
+         ui_inset(_px1, _py1, _px1 + _pw, _py1 + _ph, 10);
+-        tpl_draw_preview(tpl_cache[i], _px1 + 4, _py1 + 4, _pw - 8, _ph - 8);
++        tpl_draw_preview_i(i, _px1 + 4, _py1 + 4, _pw - 8, _ph - 8);
+         ui_rrect(_cx + 12, _cy + 172, _cx + 20 + ui_sw(_t.kind) * 0.8 + 16, _cy + 194, 11, global.TH.accent2, make_colour_rgb(46, 140, 116), 1);
+         ui_text(_cx + 22, _cy + 183, _t.kind, make_colour_rgb(16, 30, 28), fa_left, fa_middle, global.f_small, 1);
+         ui_text(_cx + 14, _cy + 202, _t.name, c_white, fa_left, fa_top, global.f_title, 1);
+@@ -203,63 +203,149 @@ function ws_templates_draw(_x1, _y1, _x2, _y2)
+     ui_scroll_end("tpl_list", _x1 + 10, _y1 + 52, _x2 - 10, _y2 - 10, _content);
+ }
+ 
+-/// Mini picture of a template (screen or the start of its first map)
+-function tpl_draw_preview(_p, _x, _y, _w, _h)
++/// Draws a template sprite pixel by pixel (used to build the cached previews)
++function tpl_prev_sprite(_p, _i, _x, _y, _col, _sa, _sb)
+ {
++    if (_i < 0 || _i >= array_length(_p.sprites)) { return; }
++    var _s = _p.sprites[_i];
++    if (_s.mc)
++    {
++        var _cols = [-1, _sa, _col, _sb];
++        for (var q = 0; q < 252; q++)
++        {
++            var _v = _s.mcp[q];
++            var _pv = 0;
++            if (_v == 1) { _pv = 2; }
++            if (_v == 2) { _pv = 1; }
++            if (_v == 3) { _pv = 3; }
++            if (_pv != 0) { px_rect(_x + (q mod 12) * 2, _y + (q div 12), 2, 1, c64col(_cols[_pv])); }
++        }
++    }
++    else
++    {
++        for (var h = 0; h < 504; h++)
++        {
++            if (_s.hi[h] != 0) { px_rect(_x + (h mod 24), _y + (h div 24), 1, 1, c64col(_col)); }
++        }
++    }
++}
++
++/// Draws one map tile of a template exactly as the C64 would show it
++function tpl_prev_tile(_p, _t, _x, _y)
++{
++    if (_t <= 0 || _t >= array_length(_p.tiles)) { return; }
++    var _e = _p.eng;
++    var _tl = _p.tiles[_t];
++    var _own = _tl.col;
++    if (!_e.fullcol) { _own = _e.wincol; }
++    var _mc = (_e.mc && _tl.mc);
++    for (var q = 0; q < 4; q++)
++    {
++        var _ox = _x + (q mod 2) * 8;
++        var _oy = _y + (q div 2) * 8;
++        var _code = _tl.c[q];
++        for (var r = 0; r < 8; r++)
++        {
++            var _b = _p.charset[_code * 8 + r];
++            if (_b == 0) { continue; }
++            if (_mc)
++            {
++                for (var pp = 0; pp < 4; pp++)
++                {
++                    var _v = (_b >> (6 - pp * 2)) & 3;
++                    if (_v == 0) { continue; }
++                    var _c = _own & 7;
++                    if (_v == 1) { _c = _e.mc1; }
++                    if (_v == 2) { _c = _e.mc2; }
++                    px_rect(_ox + pp * 2, _oy + r, 2, 1, c64col(_c));
++                }
++            }
++            else
++            {
++                for (var bit = 0; bit < 8; bit++)
++                {
++                    if ((_b & (128 >> bit)) != 0) { px_rect(_ox + bit, _oy + r, 1, 1, c64col(_own)); }
++                }
++            }
++        }
++    }
++}
++
++/// Builds (once) a 320 x 176 picture of a template's start screen
++function tpl_preview_surface(_i)
++{
++    while (array_length(tpl_prev) <= _i) { array_push(tpl_prev, -1); }
++    if (surface_exists(tpl_prev[_i])) { return tpl_prev[_i]; }
++    var _p = tpl_cache[_i];
++    var _surf = surface_create(320, 176);
++    surface_set_target(_surf);
++    gpu_set_texfilter(false);
+     if (_p.game_type == 0)
+     {
+-        var _sc = min(_w / 320, _h / 200);
++        draw_clear(c64col(_p.border));
+         var _keep = proj;
+         proj = _p;
+-        draw_c64_screen(_x + (_w - 320 * _sc) / 2, _y + (_h - 200 * _sc) / 2, _sc, false);
++        draw_c64_screen(0, -12, 1, false);
+         for (var a = 0; a < array_length(_p.actors); a++)
+         {
+             var _ac = _p.actors[a];
+-            draw_set_colour(c64col(_ac.colour));
+-            draw_rectangle(_x + (_w - 320 * _sc) / 2 + (_ac.x - 24) * _sc, _y + (_h - 200 * _sc) / 2 + (_ac.y - 50) * _sc, _x + (_w - 320 * _sc) / 2 + (_ac.x) * _sc, _y + (_h - 200 * _sc) / 2 + (_ac.y - 29) * _sc, false);
++            tpl_prev_sprite(_p, _ac.sprite, _ac.x - 24, _ac.y - 50 - 12, _ac.colour, _p.mc1, _p.mc2);
+         }
+         proj = _keep;
+-        return;
+     }
+-    var _lv = _p.levels[0];
+-    var _cell = max(2, floor(min(_w / min(_lv.w, 40), _h / min(_lv.h, 24))));
+-    var _vw = min(_lv.w, floor(_w / _cell));
+-    var _vh = min(_lv.h, floor(_h / _cell));
+-    var _sx = 0;
+-    var _sy = 0;
+-    if (_p.eng.scroll == SCROLL_V) { _sy = max(0, _lv.h - _vh); }
+-    if (_p.eng.scroll == SCROLL_8) { _sx = max(0, min(_lv.px - _vw div 2, _lv.w - _vw)); _sy = max(0, min(_lv.py - _vh div 2, _lv.h - _vh)); }
+-    draw_set_colour(c64col(_p.eng.bg));
+-    draw_rectangle(_x, _y, _x + _vw * _cell, _y + _vh * _cell, false);
+-    for (var yy = 0; yy < _vh; yy++)
+-    {
+-        for (var xx = 0; xx < _vw; xx++)
++    else
++    {
++        var _e = _p.eng;
++        draw_clear(c64col(_e.bg));
++        var _lv = _p.levels[0];
++        var _vw = 20;
++        var _vh = 11;
++        var _sx = 0;
++        var _sy = 0;
++        if (_e.scroll == SCROLL_V) { _sy = max(0, _lv.h - _vh); }
++        if (_e.scroll == SCROLL_8 || _e.scroll == SCROLL_FLIP)
+         {
+-            var _t = _lv.map[(yy + _sy) * _lv.w + xx + _sx];
+-            if (_t > 0 && _t < array_length(_p.tiles))
++            _sx = clamp(_lv.px - _vw div 2, 0, max(0, _lv.w - _vw));
++            _sy = clamp(_lv.py - _vh div 2, 0, max(0, _lv.h - _vh));
++        }
++        if (_e.scroll == SCROLL_H || _e.scroll == SCROLL_FLIP) { _sy = max(0, _lv.h - _vh); }
++        for (var ty = 0; ty < min(_vh, _lv.h); ty++)
++        {
++            for (var tx = 0; tx < min(_vw, _lv.w); tx++)
+             {
+-                draw_set_colour(c64col(_p.tiles[_t].col));
+-                draw_rectangle(_x + xx * _cell, _y + yy * _cell, _x + (xx + 1) * _cell - 1, _y + (yy + 1) * _cell - 1, false);
++                tpl_prev_tile(_p, _lv.map[(ty + _sy) * _lv.w + tx + _sx], tx * 16, ty * 16);
+             }
+         }
+-    }
+-    draw_set_colour(c64col(_p.eng.pcol));
+-    var _ppx = _x + (_lv.px - _sx) * _cell;
+-    var _ppy = _y + (_lv.py - _sy) * _cell;
+-    draw_circle(_ppx + _cell / 2, _ppy + _cell / 2, max(2, _cell * 0.6), false);
+-    for (var s = 0; s < array_length(_lv.spawners); s++)
+-    {
+-        var _sp = _lv.spawners[s];
+-        var _ex = _x + (_sp.x - _sx) * _cell;
+-        var _ey = _y + (_sp.y - _sy) * _cell;
+-        if (_ex >= _x && _ey >= _y && _ex < _x + _vw * _cell && _ey < _y + _vh * _cell)
++        // enemies at their spawn points, then the player
++        for (var s = 0; s < array_length(_lv.spawners); s++)
+         {
+-            var _col = 2;
+-            if (_sp.type < array_length(_p.enemies)) { _col = _p.enemies[_sp.type].col; }
+-            draw_set_colour(c64col(_col));
+-            draw_triangle(_ex, _ey + _cell, _ex + _cell, _ey + _cell, _ex + _cell / 2, _ey, false);
++            var _sp = _lv.spawners[s];
++            if (_sp.x >= _sx && _sp.x < _sx + _vw && _sp.y >= _sy && _sp.y < _sy + _vh && _sp.type < array_length(_p.enemies))
++            {
++                var _en = _p.enemies[_sp.type];
++                var _ey = (_sp.y - _sy) * 16;
++                if (_en.move == 5) { _ey -= 5; }
++                tpl_prev_sprite(_p, _en.spr, (_sp.x - _sx) * 16, _ey, _en.col, _e.smc1, _e.smc2);
++            }
+         }
++        var _py = (_lv.py - _sy) * 16;
++        if (_e.kind != KIND_CAVE) { _py -= 5; }
++        tpl_prev_sprite(_p, _e.pspr, (_lv.px - _sx) * 16, _py, _e.pcol, _e.smc1, _e.smc2);
+     }
++    gpu_set_texfilter(true);
++    surface_reset_target();
++    tpl_prev[_i] = _surf;
++    return _surf;
++}
++
++/// Mini picture of a template: its real graphics, cached
++function tpl_draw_preview_i(_i, _x, _y, _w, _h)
++{
++    var _surf = tpl_preview_surface(_i);
++    var _sc = min(_w / 320, _h / 176);
++    gpu_set_texfilter(false);
++    draw_surface_ext(_surf, _x + (_w - 320 * _sc) / 2, _y + (_h - 176 * _sc) / 2, _sc, _sc, 0, c_white, 1);
++    gpu_set_texfilter(true);
+ }
+ 
+ // ---------------------------------------------------------------- world

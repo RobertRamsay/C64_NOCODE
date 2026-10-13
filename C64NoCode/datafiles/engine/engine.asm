@@ -198,6 +198,17 @@ irq:
     pha
     lda irq_stage
     bne irq_b
+    ; YSCROLL 7 matches line 63 itself (63 & 7 = 7): writing it there would start a
+    ; badline mid-line. For that one value wait for the next line, then write.
+    lda disp_d011
+    and #7
+    cmp #7
+    bne irq_w
+irq_wt:
+    lda $d012
+    cmp #IRQ1_LINE+1
+    bne irq_wt
+irq_w:
     lda disp_d011
     sta $d011
     lda disp_d016
