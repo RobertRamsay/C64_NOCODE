@@ -1,0 +1,107 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index e766094..e117fbe 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -197,7 +197,15 @@ level_done:
+ irq:
+     pha
+     lda irq_stage
+-    bne irq_b
++    beq irq_s0
++    .if SCROLL_V
++    cmp #1
++    beq irq_s1
++    cmp #2
++    beq irq_s2
++    .endif
++    jmp irq_b
++irq_s0:
+     ; YSCROLL 7 matches line 63 itself (63 & 7 = 7): writing it there would start a
+     ; badline mid-line. For that one value wait for the next line, then write.
+     lda disp_d011
+@@ -210,17 +218,72 @@ irq_wt:
+     bne irq_wt
+ irq_w:
+     lda disp_d011
++    .if SCROLL_V
++    ; window starts masked (ECM+BMM = invalid mode, shows black) so the partly
++    ; scrolled-in top row never shows: the visible top edge stays fixed
++    ora #$60
++    .endif
+     sta $d011
+     lda disp_d016
+     sta $d016
++    .if SCROLL_V
+     lda #1
+     sta irq_stage
++    lda #MASK_TOP-1
++    .else
++    lda #3
++    sta irq_stage
++    lda #IRQ2_LINE
++    .endif
++    sta $d012
++    lda #$ff
++    sta $d019
++    pla
++    rti
++    .if SCROLL_V
++; unmask at the very start of line MASK_TOP (the write lands in the left border)
++irq_s1:
++    txa
++    pha
++    ldx disp_d011
++    lda #MASK_TOP
++irq_p1:
++    cmp $d012
++    bne irq_p1
++    stx $d011
++    lda #2
++    sta irq_stage
++    lda #MASK_BOT-1
++    sta $d012
++    lda #$ff
++    sta $d019
++    pla
++    tax
++    pla
++    rti
++; mask again from line MASK_BOT so the partly scrolled-in bottom row never shows
++irq_s2:
++    txa
++    pha
++    lda disp_d011
++    ora #$60
++    tax
++    lda #MASK_BOT
++irq_p2:
++    cmp $d012
++    bne irq_p2
++    stx $d011
++    lda #3
++    sta irq_stage
+     lda #IRQ2_LINE
+     sta $d012
+     lda #$ff
+     sta $d019
+     pla
++    tax
++    pla
+     rti
++    .endif
+ irq_b:
+     lda #$1b
+     sta $d011
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index 0b0afb7..9aeb30d 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -217,6 +217,8 @@ function engine_codegen(_p)
+     if (_sv == 1) { _offy += 7; }
+     array_push(_cfg, ["OFFX", _offx], ["OFFY", _offy]);
+     array_push(_cfg, ["IRQ1_LINE", 48 + _wtop * 8 - 1], ["IRQ2_LINE", 48 + (_wtop + _wrows) * 8 + 8 + _sv * 8]);
++    // vertical scrolling: fixed visible edges (window top moves 48+8*WTOP+3 .. +10)
++    array_push(_cfg, ["MASK_TOP", 48 + _wtop * 8 + 11], ["MASK_BOT", 48 + _wtop * 8 + 3 + _wrows * 8]);
+     for (var i = 0; i < array_length(_cfg); i++)
+     {
+         var _v = _cfg[i][1];

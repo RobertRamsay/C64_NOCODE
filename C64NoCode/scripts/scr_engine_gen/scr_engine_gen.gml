@@ -217,6 +217,8 @@ function engine_codegen(_p)
     if (_sv == 1) { _offy += 7; }
     array_push(_cfg, ["OFFX", _offx], ["OFFY", _offy]);
     array_push(_cfg, ["IRQ1_LINE", 48 + _wtop * 8 - 1], ["IRQ2_LINE", 48 + (_wtop + _wrows) * 8 + 8 + _sv * 8]);
+    // vertical scrolling: fixed visible edges (window top moves 48+8*WTOP+3 .. +10)
+    array_push(_cfg, ["MASK_TOP", 48 + _wtop * 8 + 11], ["MASK_BOT", 48 + _wtop * 8 + 3 + _wrows * 8]);
     for (var i = 0; i < array_length(_cfg); i++)
     {
         var _v = _cfg[i][1];
