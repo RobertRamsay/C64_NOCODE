@@ -176,7 +176,7 @@ function engine_codegen(_p)
     }
     if ((_sh == 1 || _sv == 1) && _auto_h == 0 && _auto_v == 0) { _follow = 1; }
     var _wtop = clamp(_e.wtop, 2, 4);
-    var _wrows = clamp(_e.wrows, 6, 24 - _wtop);
+    var _wrows = clamp(_e.wrows, 6, 24 - _wtop - _sv);
     var _autodiv = [0, 1, 3];
     var _gravdiv = [0, 1, 3];
     var _wpn = clamp(_e.weapon, 0, 4);
@@ -214,9 +214,9 @@ function engine_codegen(_p)
     var _offx = 24;
     if (_sh == 1) { _offx = 31; }
     var _offy = 50 + _wtop * 8;
-    if (_sv == 1) { _offy += 4; }
+    if (_sv == 1) { _offy += 7; }
     array_push(_cfg, ["OFFX", _offx], ["OFFY", _offy]);
-    array_push(_cfg, ["IRQ1_LINE", 48 + _wtop * 8 - 1], ["IRQ2_LINE", 48 + (_wtop + _wrows) * 8 + 8]);
+    array_push(_cfg, ["IRQ1_LINE", 48 + _wtop * 8 - 1], ["IRQ2_LINE", 48 + (_wtop + _wrows) * 8 + 8 + _sv * 8]);
     for (var i = 0; i < array_length(_cfg); i++)
     {
         var _v = _cfg[i][1];

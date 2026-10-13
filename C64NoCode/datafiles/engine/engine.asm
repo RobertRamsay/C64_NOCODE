@@ -693,9 +693,14 @@ compute_disp:
     sta new_d016
     lda #$1b
     .if SCROLL_V+0
-    lda #7
+    ; The row above the window only finishes (RC=7, VCBASE advances) on its 8th line.
+    ; A window badline earlier than that re-shows that blank row, so the window's real
+    ; top is 3 lines below the separator for YSCROLL 3..7 and 8 further for 0..2:
+    ; YSCROLL = (10 - fine) & 7 moves the window down exactly one line per step.
+    lda #10
     sec
     sbc fine_y
+    and #7
     ora #$18
     .endif
     sta new_d011
