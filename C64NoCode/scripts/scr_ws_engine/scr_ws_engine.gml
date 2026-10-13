@@ -296,7 +296,7 @@ function ws_world_draw(_x1, _y1, _x2, _y2)
     }
     ui_heading(_x, _y, "Play window - first row / rows");
     set_val(_e, "wtop", ui_stepper("w_wtop", _x, _y + 18, _half, _e.wtop, 2, 4, "Window top row|The score bar uses row 0 and row 1 is a gap. Move the window down to make room for more status rows."), "wtop");
-    set_val(_e, "wrows", ui_stepper("w_wrows", _x + _half + 12, _y + 18, _half, _e.wrows, 6, 25 - _e.wtop, "Window height|How many text rows scroll. Fewer rows = less work for the C64 each frame. Watch the cycle meter."), "wrows");
+    set_val(_e, "wrows", ui_stepper("w_wrows", _x + _half + 12, _y + 18, _half, _e.wrows, 6, 24 - _e.wtop, "Window height|How many text rows scroll. Fewer rows = less work for the C64 each frame. Watch the cycle meter."), "wrows");
     _y += 62;
     set_val(_e, "fullcol", ui_toggle("w_fullcol", _x, _y, "Colour per tile (slower)", _e.fullcol, "Colour scrolling|On: every tile keeps its own colour, but colour RAM must be shifted too (almost twice the work). Off: the window uses one colour - much faster, ideal with multicolour charsets."), "wfullcol");
     _y += 32;

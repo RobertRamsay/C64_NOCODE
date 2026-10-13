@@ -44,8 +44,6 @@ K_ENEMY = 3
 K_EBUL = 4
 K_DYING = 5
 
-IRQ1_LINE = 50 + WTOP*8 - 6
-IRQ2_LINE = 50 + WTOP*8 + WROWS*8 + 4
 WIN_PXH   = WROWS*8
 
 ; ---------------------------------------------------------------------
@@ -65,9 +63,17 @@ start:
     sta $fffa
     lda #>nmi
     sta $fffb
+    ; IRQ vector -> JMP in zero page so $FFFF (the VIC ghost byte in bank 3) is $00:
+    ; idle lines above a vertically scrolled window then stay blank
+    lda #$4c
+    sta $f0
     lda #<irq
-    sta $fffe
+    sta $f1
     lda #>irq
+    sta $f2
+    lda #$f0
+    sta $fffe
+    lda #$00
     sta $ffff
     lda #0
     sta $d015
@@ -185,41 +191,38 @@ level_done:
     jmp new_game
 
 ; ---------------------------------------------------------------------
+; IRQ1 fires on the last raster line of the row above the window (48+WTOP*8-1).
+; $D011 is written first, inside that line, so the window's first badline is
+; always at 48+WTOP*8+YSCROLL: smooth vertical scrolling with no early badline.
 irq:
     pha
-    txa
-    pha
-    tya
-    pha
-    lda #$ff
-    sta $d019
     lda irq_stage
     bne irq_b
-    lda disp_d016
-    sta $d016
     lda disp_d011
     sta $d011
+    lda disp_d016
+    sta $d016
     lda #1
     sta irq_stage
     lda #IRQ2_LINE
     sta $d012
-    jmp irq_x
+    lda #$ff
+    sta $d019
+    pla
+    rti
 irq_b:
-    lda #HUD_D016
-    sta $d016
     lda #$1b
     sta $d011
+    lda #HUD_D016
+    sta $d016
     lda #0
     sta irq_stage
     lda #IRQ1_LINE
     sta $d012
     lda #1
     sta frame_flag
-irq_x:
-    pla
-    tay
-    pla
-    tax
+    lda #$ff
+    sta $d019
     pla
 nmi:
     rti

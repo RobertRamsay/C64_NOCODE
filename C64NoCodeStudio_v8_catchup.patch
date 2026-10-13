@@ -1,0 +1,182 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index 9b90027..ad2313d 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -44,8 +44,6 @@ K_ENEMY = 3
+ K_EBUL = 4
+ K_DYING = 5
+ 
+-IRQ1_LINE = 50 + WTOP*8 - 6
+-IRQ2_LINE = 50 + WTOP*8 + WROWS*8 + 4
+ WIN_PXH   = WROWS*8
+ 
+ ; ---------------------------------------------------------------------
+@@ -65,9 +63,17 @@ start:
+     sta $fffa
+     lda #>nmi
+     sta $fffb
++    ; IRQ vector -> JMP in zero page so $FFFF (the VIC ghost byte in bank 3) is $00:
++    ; idle lines above a vertically scrolled window then stay blank
++    lda #$4c
++    sta $f0
+     lda #<irq
+-    sta $fffe
++    sta $f1
+     lda #>irq
++    sta $f2
++    lda #$f0
++    sta $fffe
++    lda #$00
+     sta $ffff
+     lda #0
+     sta $d015
+@@ -185,41 +191,38 @@ level_done:
+     jmp new_game
+ 
+ ; ---------------------------------------------------------------------
++; IRQ1 fires on the last raster line of the row above the window (48+WTOP*8-1).
++; $D011 is written first, inside that line, so the window's first badline is
++; always at 48+WTOP*8+YSCROLL: smooth vertical scrolling with no early badline.
+ irq:
+     pha
+-    txa
+-    pha
+-    tya
+-    pha
+-    lda #$ff
+-    sta $d019
+     lda irq_stage
+     bne irq_b
+-    lda disp_d016
+-    sta $d016
+     lda disp_d011
+     sta $d011
++    lda disp_d016
++    sta $d016
+     lda #1
+     sta irq_stage
+     lda #IRQ2_LINE
+     sta $d012
+-    jmp irq_x
++    lda #$ff
++    sta $d019
++    pla
++    rti
+ irq_b:
+-    lda #HUD_D016
+-    sta $d016
+     lda #$1b
+     sta $d011
++    lda #HUD_D016
++    sta $d016
+     lda #0
+     sta irq_stage
+     lda #IRQ1_LINE
+     sta $d012
+     lda #1
+     sta frame_flag
+-irq_x:
+-    pla
+-    tay
+-    pla
+-    tax
++    lda #$ff
++    sta $d019
+     pla
+ nmi:
+     rti
+diff --git a/C64NoCode/objects/obj_app/Step_0.gml b/C64NoCode/objects/obj_app/Step_0.gml
+index 7b0a86d..43a77fd 100644
+--- a/C64NoCode/objects/obj_app/Step_0.gml
++++ b/C64NoCode/objects/obj_app/Step_0.gml
+@@ -1,10 +1,10 @@
+ /// Window sizing, autosave, shortcuts
+ 
+-// full-screen window on launch (done a frame late so the runner has a window)
++// maximised, normal bordered window on launch (a frame late so the runner has a window)
+ startup_frames += 1;
+ if (startup_frames == 2 && start_fullscreen)
+ {
+-    window_set_fullscreen(true);
++    window_maximise_bordered();
+ }
+ if (keyboard_check_pressed(vk_f11))
+ {
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index 994ffcb..9176515 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -176,7 +176,7 @@ function engine_codegen(_p)
+     }
+     if ((_sh == 1 || _sv == 1) && _auto_h == 0 && _auto_v == 0) { _follow = 1; }
+     var _wtop = clamp(_e.wtop, 2, 4);
+-    var _wrows = clamp(_e.wrows, 6, 25 - _wtop - _sv);
++    var _wrows = clamp(_e.wrows, 6, 24 - _wtop);
+     var _autodiv = [0, 1, 3];
+     var _gravdiv = [0, 1, 3];
+     var _wpn = clamp(_e.weapon, 0, 4);
+@@ -216,6 +216,7 @@ function engine_codegen(_p)
+     var _offy = 50 + _wtop * 8;
+     if (_sv == 1) { _offy += 4; }
+     array_push(_cfg, ["OFFX", _offx], ["OFFY", _offy]);
++    array_push(_cfg, ["IRQ1_LINE", 48 + _wtop * 8 - 1], ["IRQ2_LINE", 48 + (_wtop + _wrows) * 8 + 8]);
+     for (var i = 0; i < array_length(_cfg); i++)
+     {
+         var _v = _cfg[i][1];
+diff --git a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+index 6e78ae1..66284dd 100644
+--- a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
++++ b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+@@ -152,6 +152,20 @@ function ui_scissor_reset()
+     gpu_set_scissor(0, 0, window_get_width(), window_get_height());
+ }
+ 
++/// Fills the desktop with a normal Windows-style window (title bar and border kept,
++/// taskbar left visible). F11 still switches to true full screen.
++function window_maximise_bordered()
++{
++    window_set_fullscreen(false);
++    var _s = max(1, display_get_dpi_y() / 96);
++    var _dw = display_get_width();
++    var _dh = display_get_height();
++    var _frame = round(8 * _s);
++    var _title = round(31 * _s);
++    var _task = round(48 * _s);
++    window_set_rectangle(_frame, _title, _dw - _frame * 2, _dh - _title - _task - _frame);
++}
++
+ /// Automatic interface scale: 1080p = 100%, 1440p = 125%, 4K = 200%
+ function ui_scale_for(_ww, _wh)
+ {
+diff --git a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+index 27038d1..9633421 100644
+--- a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
++++ b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+@@ -296,7 +296,7 @@ function ws_world_draw(_x1, _y1, _x2, _y2)
+     }
+     ui_heading(_x, _y, "Play window - first row / rows");
+     set_val(_e, "wtop", ui_stepper("w_wtop", _x, _y + 18, _half, _e.wtop, 2, 4, "Window top row|The score bar uses row 0 and row 1 is a gap. Move the window down to make room for more status rows."), "wtop");
+-    set_val(_e, "wrows", ui_stepper("w_wrows", _x + _half + 12, _y + 18, _half, _e.wrows, 6, 25 - _e.wtop, "Window height|How many text rows scroll. Fewer rows = less work for the C64 each frame. Watch the cycle meter."), "wrows");
++    set_val(_e, "wrows", ui_stepper("w_wrows", _x + _half + 12, _y + 18, _half, _e.wrows, 6, 24 - _e.wtop, "Window height|How many text rows scroll. Fewer rows = less work for the C64 each frame. Watch the cycle meter."), "wrows");
+     _y += 62;
+     set_val(_e, "fullcol", ui_toggle("w_fullcol", _x, _y, "Colour per tile (slower)", _e.fullcol, "Colour scrolling|On: every tile keeps its own colour, but colour RAM must be shifted too (almost twice the work). Off: the window uses one colour - much faster, ideal with multicolour charsets."), "wfullcol");
+     _y += 32;
+diff --git a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+index 976402d..8b173be 100644
+--- a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
++++ b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+@@ -144,12 +144,12 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
+         ui_scale_pref = global.UI_SCALE_VALUES[_nsi];
+         settings_save();
+     }
+-    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start full screen", start_fullscreen, "Full screen|Opens the studio filling the whole screen. F11 switches between full screen and a window at any time.");
++    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start maximised", start_fullscreen, "Maximised window|Opens the studio as a normal window filling the screen, with its title bar and border. F11 switches to borderless full screen and back.");
+     if (_fs != start_fullscreen)
+     {
+         start_fullscreen = _fs;
+         settings_save();
+-        window_set_fullscreen(_fs);
++        if (_fs) { window_maximise_bordered(); }
+     }
+     _y += 64;
+     ui_heading(_fx, _y, "Studio");

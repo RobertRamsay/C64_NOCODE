@@ -152,6 +152,20 @@ function ui_scissor_reset()
     gpu_set_scissor(0, 0, window_get_width(), window_get_height());
 }
 
+/// Fills the desktop with a normal Windows-style window (title bar and border kept,
+/// taskbar left visible). F11 still switches to true full screen.
+function window_maximise_bordered()
+{
+    window_set_fullscreen(false);
+    var _s = max(1, display_get_dpi_y() / 96);
+    var _dw = display_get_width();
+    var _dh = display_get_height();
+    var _frame = round(8 * _s);
+    var _title = round(31 * _s);
+    var _task = round(48 * _s);
+    window_set_rectangle(_frame, _title, _dw - _frame * 2, _dh - _title - _task - _frame);
+}
+
 /// Automatic interface scale: 1080p = 100%, 1440p = 125%, 4K = 200%
 function ui_scale_for(_ww, _wh)
 {

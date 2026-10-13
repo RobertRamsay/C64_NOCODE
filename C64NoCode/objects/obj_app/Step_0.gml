@@ -1,10 +1,10 @@
 /// Window sizing, autosave, shortcuts
 
-// full-screen window on launch (done a frame late so the runner has a window)
+// maximised, normal bordered window on launch (a frame late so the runner has a window)
 startup_frames += 1;
 if (startup_frames == 2 && start_fullscreen)
 {
-    window_set_fullscreen(true);
+    window_maximise_bordered();
 }
 if (keyboard_check_pressed(vk_f11))
 {

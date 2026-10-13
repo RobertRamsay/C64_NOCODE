@@ -144,12 +144,12 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
         ui_scale_pref = global.UI_SCALE_VALUES[_nsi];
         settings_save();
     }
-    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start full screen", start_fullscreen, "Full screen|Opens the studio filling the whole screen. F11 switches between full screen and a window at any time.");
+    var _fs = ui_toggle("home_fullscreen", _fx + _half + 12, _y + 22, "Start maximised", start_fullscreen, "Maximised window|Opens the studio as a normal window filling the screen, with its title bar and border. F11 switches to borderless full screen and back.");
     if (_fs != start_fullscreen)
     {
         start_fullscreen = _fs;
         settings_save();
-        window_set_fullscreen(_fs);
+        if (_fs) { window_maximise_bordered(); }
     }
     _y += 64;
     ui_heading(_fx, _y, "Studio");
