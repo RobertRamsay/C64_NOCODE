@@ -11,7 +11,7 @@ function project_defs_init()
                          "Move actor to a random spot", "Hide actor", "Show actor", "Change actor colour",
                          "Change background colour", "Game over", "You win!", "Speed up actor",
                          "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds",
-                         "Play music", "Stop music"];
+                         "Play music", "Stop music", "Show a bitmap"];
     global.TEMPLATE_NAMES = ["Player touches enemy: lose a life", "Player touches pickup: score + move pickup",
                              "Score target: you win", "Out of lives: game over", "Every 10 seconds: speed up enemy",
                              "Fire button: play a sound"];
@@ -93,7 +93,13 @@ function project_new()
         groups : [],
         machine : MACHINE_PAL,
         songs : [],
-        level_song : array_create(MUS_LEVELS, -1)
+        level_song : array_create(MUS_LEVELS, -1),
+        // the Bitmaps page: the bitmaps, and which shows where (-1 = none)
+        pictures : [],
+        pic_title : -1,
+        pic_load : -1,
+        pic_over : -1,
+        pic_win : -1
     };
     for (var i = 0; i < 8; i++)
     {
@@ -379,6 +385,7 @@ function project_from_loaded(_raw)
     }
     if (array_length(_lvls) == 0) { _lvls = [level_new("Level 1", 40, 12)]; }
     _p.levels = _lvls;
+    bmp_project_fix(_p);
     return _p;
 }
 

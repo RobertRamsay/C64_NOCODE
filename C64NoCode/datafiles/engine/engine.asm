@@ -121,6 +121,13 @@ new_game:
     ldx #$ff
     txs
     cli
+    .if PIC_ON
+    ; the title bitmap until fire is pressed; a level's bitmap shows the first time it starts
+    lda #$ff
+    sta pic_lvl
+    lda #PIC_TITLE
+    jsr pic_maybe
+    .endif
     lda #0
     sta score
     sta score+1
@@ -130,6 +137,16 @@ new_game:
     sta lives
 
 level_start:
+    .if PIC_ON
+    lda level
+    cmp pic_lvl
+    beq ls_np
+    sta pic_lvl
+    tax
+    lda pic_lvtab,x
+    jsr pic_maybe
+ls_np:
+    .endif
     jsr level_init
     lda level
     jsr mus_level           ; this level's song (one already playing carries on)
@@ -170,6 +187,15 @@ dead:
     jmp level_start
 game_over:
     jsr mus_stop
+    .if PIC_ON
+    lda #PIC_OVER
+    cmp #255
+    beq go_txt
+    ldx #0
+    jsr pic_show
+    jmp new_game
+go_txt:
+    .endif
     ldx #<txt_over
     ldy #>txt_over
     jsr message
@@ -181,8 +207,19 @@ level_done:
     inc level
     lda level
     cmp #NLEVELS
-    bcc level_start
+    bcs ld_won
+    jmp level_start
+ld_won:
     jsr mus_stop
+    .if PIC_ON
+    lda #PIC_WIN
+    cmp #255
+    beq wn_txt
+    ldx #0
+    jsr pic_show
+    jmp new_game
+wn_txt:
+    .endif
     ldx #<txt_win
     ldy #>txt_win
     jsr message
@@ -194,6 +231,18 @@ level_done:
 ; always at 48+WTOP*8+YSCROLL: smooth vertical scrolling with no early badline.
 irq:
     pha
+    .if PIC_ON
+    ; a bitmap is showing: no raster splits, just the frame tick
+    lda pic_on
+    beq irq_go
+    lda #1
+    sta frame_flag
+    lda #$ff
+    sta $d019
+    pla
+    rti
+irq_go:
+    .endif
     lda irq_stage
     beq irq_s0
     .if SCROLL_V

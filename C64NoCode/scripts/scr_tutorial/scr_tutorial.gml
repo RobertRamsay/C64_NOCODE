@@ -67,6 +67,12 @@ function tut_init()
         tut_step(WS_SOUND, "snd_kind_2", "Patches", "Patch is ADAM's patch synth on the real chip: three oscillators with sync and ring modulation, the filter with its own envelope, LFOs and a modulation matrix. Start from a preset, or press Randomise and Mutate until something great happens."),
         tut_step(WS_SOUND, "snd_preview", "Listen", "Play the sound any time (or press Space). Rules on the Logic page choose when your game plays it."),
         // ---------- MUSIC ----------
+        tut_step(WS_BITMAPS, "", "Bitmaps", "Full-screen C64 pictures: a title screen, a loading screen, game over and winning screens, or a picture shown during the game. Each takes about 10 KB of the game's memory."),
+        tut_step(WS_BITMAPS, "bm_new", "Start one", "+ New gives you a blank multicolour bitmap. Import... brings in a PNG or JPG (you choose the dither and colours) or a Koala Painter file."),
+        tut_step(WS_BITMAPS, "bm_canvas", "Paint", "Left button paints the pen colour, right button the second colour. Mouse wheel zooms, Space+drag moves around. Each 8 x 8 cell can only hold a few colours - paint a new colour into a full cell and it takes over the colour it lands on, just like the real C64."),
+        tut_step(WS_BITMAPS, "bm_tool_0", "Tools", "Brush, line, box, ellipse, fill, dithered gradient, the C64's own letters, colour pick and copy-and-stamp. Each tool has a key: B L R E F G T K C."),
+        tut_step(WS_BITMAPS, "bm_pal", "Colours", "Left-click a colour for the pen, right-click for the second colour."),
+        tut_step(WS_BITMAPS, "bm_scr_pic_title", "Where they show", "Choose which bitmap is the title screen, the loading screen, game over and you win. The loading screen goes on a .d64 disk with a small loader, so it costs no game memory."),
         tut_step(WS_ANIMATE, "", "Animate", "Animations for your cast, played by a small routine in the game that watches which way each sprite moves. Pick someone on the left."),
         tut_step(WS_ANIMATE, "anim_mid_0", "The joystick", "The middle plays while it stands still, the 8 slots round it while it moves that way. Leave directions empty and they borrow from Walk or from each other."),
         tut_step(WS_ANIMATE, "anim_bank_0", "Pick the frames", "Click a frame slot, then sprites in the bank - each click adds a frame. Double-click a sprite to draw it."),

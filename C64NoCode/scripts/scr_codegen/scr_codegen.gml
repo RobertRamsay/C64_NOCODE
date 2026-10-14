@@ -94,10 +94,12 @@ function cg_do_lines(L, _p, _d, _tag, na)
             array_push(L, " lda #" + string(clamp(_d.value, 0, 15)), " sta $d021", " rts");
             break;
         case 10:
-            array_push(L, " ldx #<txt_over", " ldy #>txt_over", " jmp end_screen");
+            if (_p.pic_over >= 0 && _p.pic_over < array_length(_p.pictures)) { array_push(L, " lda #" + string(bmp_slot(bmp_game_list(_p), _p.pic_over)), " jmp pic_end_scr"); }
+            else { array_push(L, " ldx #<txt_over", " ldy #>txt_over", " jmp end_screen"); }
             break;
         case 11:
-            array_push(L, " ldx #<txt_win", " ldy #>txt_win", " jmp end_screen");
+            if (_p.pic_win >= 0 && _p.pic_win < array_length(_p.pictures)) { array_push(L, " lda #" + string(bmp_slot(bmp_game_list(_p), _p.pic_win)), " jmp pic_end_scr"); }
+            else { array_push(L, " ldx #<txt_win", " ldy #>txt_win", " jmp end_screen"); }
             break;
         case 12:
             array_push(L, " lda aspd+" + _ts, " cmp #8", " bcs sp" + _tag, " inc aspd+" + _ts, "sp" + _tag + ":", " rts");
@@ -122,6 +124,12 @@ function cg_do_lines(L, _p, _d, _tag, na)
             break;
         case 18:
             array_push(L, " jmp mus_stop");
+            break;
+        case 19:
+            // show a bitmap: for some seconds, or until fire is pressed and let go
+            var _ps = bmp_slot(bmp_game_list(_p), _d.value);
+            if (_ps == 255) { array_push(L, " rts"); }
+            else { array_push(L, " lda #" + string(_ps), " ldx #" + string(clamp(_d.target, 0, 30)), " jmp pic_show"); }
             break;
         default:
             array_push(L, " rts");
@@ -183,14 +191,7 @@ function codegen_project(_p)
     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
     array_push(L, " lda #" + string(_p.border), " sta $d020", " lda #" + string(_p.background), " sta $d021");
     array_push(L, " lda #$1b", " sta $d011", " lda #$15", " sta $d018", " lda #$c8", " sta $d016");
-    array_push(L, " ldx #0", "cpy1:");
-    for (var k = 0; k < 4; k++)
-    {
-        var _o = string(k * 250);
-        array_push(L, " lda scr_data+" + _o + ",x", " sta $0400+" + _o + ",x");
-        array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
-    }
-    array_push(L, " inx", " cpx #250", " bne cpy1");
+    array_push(L, " jsr draw_screen");
     array_push(L, " jsr sfx_init");
     // the screen's song (Music page: Where the music plays); one already playing carries on
     array_push(L, " lda #0", " jsr mus_level");
@@ -225,6 +226,9 @@ function codegen_project(_p)
     array_push(L, " lda #0", " sta $d017", " sta $d01d", " sta $d01b");
     array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
     array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e", " lda $d01f");
+    // the title bitmap (Bitmaps page) until fire is pressed - the screen's song plays meanwhile
+    var _pics = bmp_game_list(_p);
+    if (_p.pic_title >= 0 && _p.pic_title < array_length(_p.pictures)) { array_push(L, " lda #" + string(bmp_slot(_pics, _p.pic_title)), " ldx #0", " jsr pic_show", " lda $d01e", " lda $d01f"); }
     for (var r0 = 0; r0 < nr; r0++)
     {
         if (_on[r0] && _rules[r0].when == 5)
@@ -409,7 +413,15 @@ function codegen_project(_p)
     }
     array_push(L, " lda tmp", " sta $d010", " lda tmp2", " sta $d015", " rts");
 
-    // ---------------- HUD ----------------
+    // ---------------- the screen and the HUD ----------------
+    array_push(L, "draw_screen:", " ldx #0", "cpy1:");
+    for (var k = 0; k < 4; k++)
+    {
+        var _o = string(k * 250);
+        array_push(L, " lda scr_data+" + _o + ",x", " sta $0400+" + _o + ",x");
+        array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
+    }
+    array_push(L, " inx", " cpx #250", " bne cpy1", " rts");
     array_push(L, "draw_hud:");
     var _hc = string(_p.hud_colour);
     var _row = clamp(_p.hud_row, 0, 24);
@@ -454,6 +466,8 @@ function codegen_project(_p)
     array_push(L, "es4:", " lda $dc00", " and #16", " bne es4");
     array_push(L, "es5:", " lda $dc00", " and #16", " beq es5");
     array_push(L, " ldx #$ff", " txs", " jmp restart");
+    // a game over / winning bitmap instead of the message (A = its slot)
+    if (array_length(_pics) > 0) { array_push(L, "pic_end_scr:", " pha", " jsr sfx_stop", " jsr mus_stop", " pla", " ldx #0", " jsr pic_show", " ldx #$ff", " txs", " jmp restart"); }
 
     // ---------------- rule actions: one subroutine per card, its DO lines run in order ----------------
     for (var ra = 0; ra < nr; ra++)
@@ -516,6 +530,8 @@ function codegen_project(_p)
     digi_emit(L, _p);
     patch_emit(L, _p);
     if (_ab.on) { anim_emit(L, _ab); }
+    // bitmaps last of all: they are big, and are copied to bank 3 to be shown
+    if (array_length(_pics) > 0) { bmp_emit_game(L, _p, _pics, 0); }
 
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }
@@ -544,7 +560,7 @@ function build_prg(_path)
     if (_end > C64_BASIC_END)
     {
         build_ok = false;
-        build_msg = "Build failed - the game is too big: it ends at $" + string_upper(dec_to_hex(_end)) + ", past $A000 where the BASIC ROM starts. Make the songs shorter or use fewer loops.";
+        build_msg = "Build failed - the game is too big: it ends at $" + string_upper(dec_to_hex(_end)) + ", past $A000 where the BASIC ROM starts. " + bmp_too_big_hint(proj) + "Make the songs shorter or use fewer loops.";
         return false;
     }
     var _b = buffer_create(array_length(_res.bytes) + 2, buffer_fixed, 1);

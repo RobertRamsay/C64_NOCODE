@@ -25,6 +25,7 @@ switch (ws)
     case WS_ENEMIES: ws_enemies_draw(_x1, _y1, _x2, _y2); break;
     case WS_MUSIC:   ws_music_draw(_x1, _y1, _x2, _y2);   break;
     case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
+    case WS_BITMAPS: ws_bitmap_draw(_x1, _y1, _x2, _y2);  break;
 }
 
 draw_topbar(gui_w);

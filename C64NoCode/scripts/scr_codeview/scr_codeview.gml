@@ -78,6 +78,9 @@ function live_measure()
         // the Animate page's player and tables (after the data) count as code
         var _as = live_label(_lab, "anim_start", _org);
         var _an = live_label(_lab, "anim_end", _as) - _as;
+        // bitmaps get their own colour
+        var _pk = live_label(_lab, "pic_start", _org);
+        live_seg_pics = live_label(_lab, "pic_end", _pk) - _pk;
         if (proj.game_type == 1)
         {
             // engine and code, then the level data (tiles, enemies, maps - the sound tables are in it), then sprites + charset
@@ -86,7 +89,7 @@ function live_measure()
             live_seg_code = _ld - _org + _an;
             live_seg_gap = 0;
             live_seg_sprites = live_end - _ds;
-            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music - _an);
+            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music - _an - live_seg_pics);
             live_limit = 32768;
             live_spr_end = 0;
         }
@@ -97,7 +100,7 @@ function live_measure()
             live_seg_code = _ve - _org - (live_seg_sound - _dgn);
             live_seg_gap = _sp - _ve;
             live_seg_sprites = live_label(_lab, "spr_end", _sp + SPR_COUNT * 64) - _sp;
-            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn - _an);
+            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn - _an - live_seg_pics);
             live_seg_code += _an;
             live_limit = C64_BASIC_END;
             live_spr_end = _sp + live_seg_sprites;
@@ -139,11 +142,12 @@ function mem_bar_draw(_x, _y, _w, _h)
     if (live_ok)
     {
         var _bx = _x + 1;
-        var _parts = [live_seg_code, live_seg_sound, live_seg_gap, live_seg_sprites, live_seg_data, live_seg_music];
-        if (proj.game_type == 1) { _parts = [live_seg_code, live_seg_sound, live_seg_music, live_seg_data, 0, live_seg_sprites]; }
-        var _top = [global.TH.accent, global.TH.warn, global.TH.text_faint, make_colour_rgb(240, 150, 60), global.TH.accent2, make_colour_rgb(186, 120, 232)];
-        if (proj.game_type == 1) { _top = [global.TH.accent, global.TH.warn, make_colour_rgb(186, 120, 232), global.TH.accent2, global.TH.text_faint, make_colour_rgb(240, 150, 60)]; }
-        for (var i = 0; i < 6; i++)
+        var _parts = [live_seg_code, live_seg_sound, live_seg_gap, live_seg_sprites, live_seg_data, live_seg_music, live_seg_pics];
+        if (proj.game_type == 1) { _parts = [live_seg_code, live_seg_sound, live_seg_music, live_seg_data, 0, live_seg_pics, live_seg_sprites]; }
+        var _pink = make_colour_rgb(236, 110, 160);
+        var _top = [global.TH.accent, global.TH.warn, global.TH.text_faint, make_colour_rgb(240, 150, 60), global.TH.accent2, make_colour_rgb(186, 120, 232), _pink];
+        if (proj.game_type == 1) { _top = [global.TH.accent, global.TH.warn, make_colour_rgb(186, 120, 232), global.TH.accent2, global.TH.text_faint, _pink, make_colour_rgb(240, 150, 60)]; }
+        for (var i = 0; i < 7; i++)
         {
             var _pw = min(_parts[i] / _range * _iw, _x + 1 + _iw - _bx);
             if (_pw >= 1)
@@ -168,8 +172,8 @@ function mem_bar_draw(_x, _y, _w, _h)
     if (!live_ok && live_err != "") { _lab = "Memory  (build error)"; }
     ui_text(_x - 10, _y + _h * 0.5, _lab, global.TH.text_dim, fa_right, fa_middle, global.f_small, 1);
 
-    var _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: code made from your rules. Yellow: the SID sound player and sound tables. Orange: the 32 sprites. Green: the screen and colour data. Purple: the music driver and your songs (after the screen data, where they can't push the sprites out of the VIC-II's sight).";
-    if (proj.game_type == 1) { _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: the scrolling engine. Yellow: the SID sound player and sound tables. Purple: the music driver and songs. Green: tiles, enemy types and the level maps. Orange: sprites and the charset."; }
+    var _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: code made from your rules. Yellow: the SID sound player and sound tables. Orange: the 32 sprites. Green: the screen and colour data. Purple: the music driver and your songs (after the screen data, where they can't push the sprites out of the VIC-II's sight). Pink: your bitmaps (about 10 KB each).";
+    if (proj.game_type == 1) { _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: the scrolling engine. Yellow: the SID sound player and sound tables. Purple: the music driver and songs. Green: tiles, enemy types and the level maps. Pink: your bitmaps (about 10 KB each). Orange: sprites and the charset."; }
     if (proj.game_type == 0)
     {
         _help += " The full bar is the 38911 bytes BASIC leaves free ($0801-$9FFF). Grey is a gap: the VIC-II chip sees the character ROM at $1000-$1FFF, so sprites start at $2000. The red tick is $3800 - code past it pushes the sprites beyond $4000, where the VIC-II cannot see them.";

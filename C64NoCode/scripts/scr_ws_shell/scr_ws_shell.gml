@@ -9,7 +9,8 @@
 #macro WS_BUILD 6
 #macro WS_MUSIC 13
 #macro WS_ANIMATE 14
-#macro WS_COUNT 15
+#macro WS_BITMAPS 15
+#macro WS_COUNT 16
 
 function ws_set(_i)
 {
@@ -274,14 +275,14 @@ function ws_tabs()
 {
     if (proj.game_type == 1)
     {
-        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_BUILD];
+        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_BITMAPS, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_BUILD];
     }
-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
+    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
 }
 
 function ws_name(_w)
 {
-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate"];
+    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps"];
     return _n[_w];
 }
 
@@ -302,7 +303,8 @@ function ws_help(_w)
         "Map|Paint levels with tiles, place enemy spawners and the player's start. Up to 8 levels.",
         "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot.",
         "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play.",
-        "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left."
+        "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left.",
+        "Bitmaps|Paint full-screen C64 bitmaps in multicolour or hi-res, or import PNG, JPG and Koala pictures, and show them as the title screen, the loading screen, the game over and winning screens, before a level or from a rule. Each takes about 10 KB of the game."
     ];
     return _h[_w];
 }

@@ -149,6 +149,11 @@ function logic_do_phrase(_d, _names, _na)
             if (array_length(proj.songs) == 0) { return "play music (no songs yet)"; }
             return "play the song '" + proj.songs[clamp(_d.value, 0, array_length(proj.songs) - 1)].name + "'";
         case 18: return "stop the music";
+        case 19:
+            if (array_length(proj.pictures) == 0) { return "show a bitmap (no bitmaps yet)"; }
+            var _pn = "show the bitmap '" + proj.pictures[clamp(_d.value, 0, array_length(proj.pictures) - 1)].name + "'";
+            if (_d.target > 0) { return _pn + " for " + string(_d.target) + " seconds"; }
+            return _pn + " until fire is pressed";
     }
     return "?";
 }
@@ -441,6 +446,22 @@ function logic_do_row(_d, _rid, _x, _y, _pill, _anames, _snames, _xr)
                 if (_pl) { music_preview_stop(); }
                 else { music_preview_start(music_compile(proj.songs, proj.level_song), _sv, 0, false, "logic" + string(_sv)); }
             }
+        }
+    }
+    if (_act == 19)
+    {
+        if (array_length(proj.pictures) == 0)
+        {
+            if (ui_button(_rid + "_mkbm", _dx, _dy, 150, 30, "Make a bitmap...", "No bitmaps yet|Opens the Bitmaps page so you can paint or import one.", BTN_GHOST)) { ws_set(WS_BITMAPS); }
+        }
+        else
+        {
+            var _bnames = [];
+            for (var bn = 0; bn < array_length(proj.pictures); bn++) { array_push(_bnames, proj.pictures[bn].name); }
+            var _bmw = max(100, min(180, _xr - _dx - 260));
+            set_val(_d, "value", ui_dropdown(_rid + "_bm", _dx, _dy, _bmw, 30, _bnames, clamp(_d.value, 0, array_length(proj.pictures) - 1), "Bitmap|Which bitmap to show, from the Bitmaps page. The game waits while it shows (the music keeps playing), then carries on where it was."), _rid + "bm");
+            set_val(_d, "target", ui_stepper(_rid + "_secs", _dx + _bmw + 8, _dy, 110, clamp(_d.target, 0, 30), 0, 30, "Seconds|How long it shows. 0 = until the fire button is pressed and let go."), _rid + "secs");
+            logic_word(_dx + _bmw + 126, _dy, (_d.target > 0) ? "seconds" : "until fire");
         }
     }
     if (_act == 8 || _act == 9)

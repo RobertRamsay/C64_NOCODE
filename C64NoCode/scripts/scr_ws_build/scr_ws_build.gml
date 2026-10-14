@@ -31,11 +31,27 @@ function build_ws_build(_run)
     {
         build_log_add(build_msg + "  (" + string(current_time - _t0) + " ms)", 0);
         for (var i = 0; i < array_length(build_warnings); i++) { build_log_add(build_warnings[i], 1); }
+        // a loading screen: the game goes on a .d64 disk behind a loader that shows the bitmap
+        var _run_path = out_path;
+        if (proj.pic_load >= 0 && proj.pic_load < array_length(proj.pictures))
+        {
+            var _dk = bmp_build_disk(out_path);
+            if (is_string(_dk) && string_lower(filename_ext(_dk)) == ".d64")
+            {
+                build_log_add("Disk " + filename_name(_dk) + ": the loader shows '" + proj.pictures[proj.pic_load].name + "' while the game loads", 0);
+                _run_path = _dk;
+            }
+            else { build_log_add("No disk image - " + string(_dk), 2); }
+        }
         toast("Build complete!", 0);
         if (_run)
         {
-            if (proj.machine == MACHINE_ULTIMATE) { u64_send_prg(out_path); }
-            else { launch_vice(out_path); }
+            if (proj.machine == MACHINE_ULTIMATE)
+            {
+                if (_run_path != out_path) { build_log_add("The C64 Ultimate is sent the game itself, so the loading screen doesn't show - load the .d64 from its menu to see it", 1); }
+                u64_send_prg(out_path);
+            }
+            else { launch_vice(_run_path); }
         }
     }
     else
