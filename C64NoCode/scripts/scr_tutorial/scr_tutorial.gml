@@ -69,6 +69,7 @@ function tut_init()
         tut_step(WS_MUSIC, "mus_cat_0", "The loop library", "Ready-made one-bar loops: drums, bass, chords, leads and effects. Click one to hear it - it becomes your brush."),
         tut_step(WS_MUSIC, "mus_grid", "Paint the song", "Each row is a SID voice, each box a bar. Click empty bars to paint your loop, right-click to rub out, double-click a loop to change its notes."),
         tut_step(WS_MUSIC, "mus_play", "Listen", "Play one bar, 4 bars or the whole song from the white marker (click the bar numbers). Space plays and stops."),
+        tut_step(WS_MUSIC, "mus_imod", "Bring in a MOD", "Import .mod turns a ProTracker module into a song: its 3 busiest channels become the SID voices and its samples become SID instruments. Save .mod goes the other way, for Amiga trackers and OpenMPT."),
         tut_step(WS_MUSIC, "mus_speed", "Speed and swing", "The driver runs once a frame, so speed is frames per step: 3 is 125 BPM on a PAL C64. Swing gives it a shuffle."),
         tut_step(WS_MUSIC, "mus_lvl_0", "Where it plays", "Pick the song for your game. On the Logic page, Play music and Stop music change it while the game runs."),
         // ---------- BUILD ----------

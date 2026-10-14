@@ -300,7 +300,7 @@ function ws_help(_w)
         "Tiles|Build 16x16 tiles from 4 characters and give them jobs: solid, deadly, collectable, exit, ladder and more.",
         "Map|Paint levels with tiles, place enemy spawners and the player's start. Up to 8 levels.",
         "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot.",
-        "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Sound effects borrow voice 1 or 2 while they play."
+        "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play."
     ];
     return _h[_w];
 }

@@ -40,6 +40,7 @@
     {"id":{"name":"scr_engine_gen","path":"scripts/scr_engine_gen/scr_engine_gen.yy",},},
     {"id":{"name":"scr_gfx","path":"scripts/scr_gfx/scr_gfx.yy",},},
     {"id":{"name":"scr_machine","path":"scripts/scr_machine/scr_machine.yy",},},
+    {"id":{"name":"scr_mod","path":"scripts/scr_mod/scr_mod.yy",},},
     {"id":{"name":"scr_music","path":"scripts/scr_music/scr_music.yy",},},
     {"id":{"name":"scr_project","path":"scripts/scr_project/scr_project.yy",},},
     {"id":{"name":"scr_sfx_preview","path":"scripts/scr_sfx_preview/scr_sfx_preview.yy",},},

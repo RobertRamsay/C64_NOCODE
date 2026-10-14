@@ -155,6 +155,56 @@ function music_loop_touched(_lp)
 }
 
 // ---------------------------------------------------------------------------
+// ProTracker .mod (scr_mod does the converting)
+// ---------------------------------------------------------------------------
+
+function music_import_mod()
+{
+    if (array_length(proj.songs) >= MUS_SONG_MAX)
+    {
+        toast("A game can have up to " + string(MUS_SONG_MAX) + " songs - delete one first", 1);
+        return;
+    }
+    var _f = get_open_filename("ProTracker module|*.mod", "");
+    if (_f == "") { return; }
+    var _ms = mod_read(_f);
+    if (is_undefined(_ms)) { return; }
+    var _res = music_mod_import(_ms, filename_change_ext(filename_name(_f), ""));
+    var _s = _res.song;
+    if (array_length(_s.arr.loops) == 0)
+    {
+        toast("That module has no notes the SID can play", 2);
+        return;
+    }
+    music_preview_stop();
+    undo_mark("musimport" + string(current_time));
+    array_push(proj.songs, _s);
+    mus_song = array_length(proj.songs) - 1;
+    mus_edit = -1;
+    mus_xoff = 0;
+    mus_from = 0;
+    mus_cat = 5;
+    if (array_length(proj.songs) == 1 && proj.level_song[0] < 0) { proj.level_song[0] = 0; }
+    toast("Imported " + filename_name(_f) + ": " + string(_s.arr.bars) + " bars, " + string(array_length(_s.arr.loops)) + " loops", 0);
+    for (var i = 0; i < min(3, array_length(_res.warnings)); i++) { toast(_res.warnings[i], 1); }
+}
+
+function music_export_mod(_song)
+{
+    var _f = get_save_filename("ProTracker module|*.mod", string_replace_all(_song.name, " ", "_") + ".mod");
+    if (_f == "") { return; }
+    if (string_lower(filename_ext(_f)) != ".mod") { _f += ".mod"; }
+    var _res = music_mod_export(_song);
+    if (!mod_save_file(_res.ms, _f))
+    {
+        toast("Could not save " + filename_name(_f), 2);
+        return;
+    }
+    toast("Saved " + filename_name(_f) + " (" + string(mod_size(_res.ms)) + " bytes)", 0);
+    for (var i = 0; i < min(3, array_length(_res.warnings)); i++) { toast(_res.warnings[i], 1); }
+}
+
+// ---------------------------------------------------------------------------
 // Export: a PSID file any SID player (VICE's VSID, SIDPlay, the C64 Ultimate) can play
 // ---------------------------------------------------------------------------
 
@@ -250,7 +300,8 @@ function ws_music_draw(_x1, _y1, _x2, _y2)
         var _my = (_y1 + _y2) * 0.5;
         ui_text(_mx, _my - 60, "No songs yet", global.TH.text, fa_center, fa_middle, global.f_title, 1);
         ui_text_wrap(_mx - 230, _my - 34, "A song plays on the SID chip's 3 voices while your game runs. Start with a ready-made song, then paint loops from the library onto its timeline.", global.TH.text_dim, 460, global.f_body, 1);
-        if (ui_button("mus_first", _mx - 90, _my + 34, 180, 40, "New song", "New song|Makes a song with drums, chords, a tune and a bass line to start from.", BTN_ACCENT)) { music_song_add(); }
+        if (ui_button("mus_first", _mx - 186, _my + 34, 180, 40, "New song", "New song|Makes a song with drums, chords, a tune and a bass line to start from.", BTN_ACCENT)) { music_song_add(); }
+        if (ui_button("mus_first_mod", _mx + 6, _my + 34, 180, 40, "Import .mod", "Import a MOD|Brings in a ProTracker .mod as a new song, turned into SID voices, instruments and loops.", BTN_NORMAL)) { music_import_mod(); }
         return;
     }
     var _s = proj.songs[mus_song];
@@ -263,7 +314,7 @@ function ws_music_draw(_x1, _y1, _x2, _y2)
     // ---------------- toolbar row 1: the song ----------------
     var _tx = _cx1 + 18;
     var _ty = _y1 + 54;
-    var _ns = ui_dropdown("mus_songs", _tx, _ty, 200, 32, music_song_names(), mus_song, "Song|Which song you are working on. A game can have up to " + string(MUS_SONG_MAX) + ".");
+    var _ns = ui_dropdown("mus_songs", _tx, _ty, 180, 32, music_song_names(), mus_song, "Song|Which song you are working on. A game can have up to " + string(MUS_SONG_MAX) + ".");
     if (_ns != mus_song)
     {
         mus_song = _ns;
@@ -273,18 +324,29 @@ function ws_music_draw(_x1, _y1, _x2, _y2)
         music_preview_stop();
         _s = proj.songs[mus_song];
     }
-    _tx += 208;
+    _tx += 188;
     if (ui_button("mus_new", _tx, _ty, 64, 32, "New", "New song|Makes another song, with a starter arrangement to change.", BTN_NORMAL)) { music_song_add(); _s = proj.songs[mus_song]; }
     _tx += 72;
-    set_val(_s, "name", ui_textfield("mus_name", _tx, _ty, 170, 32, _s.name, 20, "Song name|Shown on the Logic page and in the level list."), "musname");
-    _tx += 178;
+    set_val(_s, "name", ui_textfield("mus_name", _tx, _ty, 150, 32, _s.name, 20, "Song name|Shown on the Logic page and in the level list."), "musname");
+    _tx += 158;
     if (ui_button("mus_del", _tx, _ty, 76, 32, "Delete", "Delete song|Removes this song. Levels and rules that played it stop playing music. Undo brings it back.", BTN_DANGER))
     {
         music_song_remove();
         return;
     }
     _tx += 84;
-    if (ui_button("mus_sid", _tx, _ty, 120, 32, "Save .SID", "Save as a SID tune|Saves all your songs as a .SID file (PSID) - the format C64 music collections use. Play it in VICE's VSID, SIDPlay or on a C64 Ultimate.", BTN_GHOST))
+    if (ui_button("mus_imod", _tx, _ty, 110, 32, "Import .mod", "Import a MOD|Brings in a ProTracker .mod as a new song. Its 3 busiest channels become the SID voices, its samples become SID instruments (drums by name or sound, tunes by pitch) and its patterns become loops you can edit.", BTN_GHOST))
+    {
+        music_import_mod();
+        return;
+    }
+    _tx += 118;
+    if (ui_button("mus_smod", _tx, _ty, 100, 32, "Save .mod", "Save as a MOD|Saves this song as a 4-channel ProTracker .mod (the 4th channel stays empty), each SID instrument recorded as a sample - for Amiga trackers, OpenMPT and friends.", BTN_GHOST))
+    {
+        music_export_mod(_s);
+    }
+    _tx += 108;
+    if (ui_button("mus_sid", _tx, _ty, 100, 32, "Save .SID", "Save as a SID tune|Saves all your songs as a .SID file (PSID) - the format C64 music collections use. Play it in VICE's VSID, SIDPlay or on a C64 Ultimate.", BTN_GHOST))
     {
         music_export_sid();
     }
