@@ -1081,7 +1081,7 @@ function bmp_emit_game(L, _p, _l, _kind)
     }
     else
     {
-        array_push(L, " lda $dd00", " ora #3", " sta $dd00", " lda #$15", " sta $d018", " lda #$c8", " sta $d016");
+        array_push(L, " lda $dd00", " ora #3", " sta $dd00", " jsr set_chars", " lda #$c8", " sta $d016");
         array_push(L, " lda pic_sv0", " sta $d020", " lda pic_sv1", " sta $d021", " jsr draw_screen", " jsr draw_hud", " lda #$1b", " sta $d011", " rts");
     }
     bmp_emit_copy(L, _s, _d);

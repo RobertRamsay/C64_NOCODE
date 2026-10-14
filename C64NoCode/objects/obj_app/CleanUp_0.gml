@@ -18,6 +18,7 @@ for (var bt = 0; bt < array_length(_bmt); bt++)
     if (surface_exists(bm_thumbs[$ _bmt[bt]].surf)) { surface_free(bm_thumbs[$ _bmt[bt]].surf); }
 }
 bm_import_cancel();
+hud_gfx_free();
 if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
 if (surface_exists(tile_atlas)) { surface_free(tile_atlas); }
 for (var tp = 0; tp < array_length(tpl_prev); tp++)

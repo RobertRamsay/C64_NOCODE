@@ -190,7 +190,7 @@ function codegen_project(_p)
     array_push(L, " ldx #0", " lda #0");
     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
     array_push(L, " lda #" + string(_p.border), " sta $d020", " lda #" + string(_p.background), " sta $d021");
-    array_push(L, " lda #$1b", " sta $d011", " lda #$15", " sta $d018", " lda #$c8", " sta $d016");
+    array_push(L, " lda #$1b", " sta $d011", " jsr set_chars", " lda #$c8", " sta $d016");
     array_push(L, " jsr draw_screen");
     array_push(L, " jsr sfx_init");
     // the screen's song (Music page: Where the music plays); one already playing carries on
@@ -421,11 +421,17 @@ function codegen_project(_p)
         array_push(L, " lda scr_data+" + _o + ",x", " sta $0400+" + _o + ",x");
         array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
     }
-    array_push(L, " inx", " cpx #250", " bne cpy1", " rts");
-    array_push(L, "draw_hud:");
+    array_push(L, " inx", " cpx #250", " bne cpy1");
+    // the UI page's custom HUD: draw_screen runs on into its panel, then its own draw_hud
+    var _hud_on = hud_emit_single(L, _p);
+    if (!_hud_on) { array_push(L, " rts"); }
+    hud_emit_set_chars(L, _p);
+    var _hw = hud_warnings(_p);
+    for (var hw = 0; hw < array_length(_hw); hw++) { array_push(_warn, _hw[hw]); }
+    if (!_hud_on) { array_push(L, "draw_hud:"); }
     var _hc = string(_p.hud_colour);
     var _row = clamp(_p.hud_row, 0, 24);
-    if (_p.show_score)
+    if (!_hud_on && _p.show_score)
     {
         var _base = 1024 + _row * 40 + 1;
         var _lab = "SCORE ";
@@ -444,7 +450,7 @@ function codegen_project(_p)
             array_push(L, " ora #48", " sta " + string(_d + dd), " lda #" + _hc, " sta " + string(_d + dd + 54272));
         }
     }
-    if (_p.show_lives)
+    if (!_hud_on && _p.show_lives)
     {
         var _lb = 1024 + _row * 40 + 31;
         var _ll = "LIVES ";
@@ -455,7 +461,7 @@ function codegen_project(_p)
         }
         array_push(L, " lda lives", " ora #48", " sta " + string(_lb + 6), " lda #" + _hc, " sta " + string(_lb + 6 + 54272));
     }
-    array_push(L, " rts");
+    if (!_hud_on) { array_push(L, " rts"); }
 
     array_push(L, "add_score:", " sed", " clc", " adc score_lo", " sta score_lo", " txa", " adc score_hi", " sta score_hi", " cld", " bcc as1");
     array_push(L, " lda #$99", " sta score_lo", " sta score_hi", "as1:", " jmp draw_hud");
@@ -521,6 +527,8 @@ function codegen_project(_p)
     // sprites turned round for the Animate page (slots 32 on)
     anim_emit_mirrors(L, _p, _ab);
     array_push(L, "spr_end:");
+    // the custom HUD's own character set (when its frame or font needs one): the VIC-II must see it
+    hud_emit_chars_single(L, _p);
     array_push(L, "scr_data:");
     for (var sr = 0; sr < 25; sr++) { array_push(L, " .byte " + cg_join_bytes(_p.chars, sr * 40, 40)); }
     array_push(L, "col_data:");
@@ -555,6 +563,13 @@ function build_prg(_path)
     {
         build_ok = false;
         build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr_end)) + ", past $4000 where the VIC-II can see them. Use fewer rules, switch a group off, or turn fewer sprites round on the Animate page.";
+        return false;
+    }
+    var _hce = _res.labels[$ "hud_chars_end"];
+    if (!is_undefined(_hce) && _hce > 16384)
+    {
+        build_ok = false;
+        build_msg = "Build failed - the custom HUD's characters would end at $" + string_upper(dec_to_hex(_hce)) + ", past $4000 where the VIC-II can see them. On the UI page use the C64 font and no frame, or make the code shorter.";
         return false;
     }
     if (_end > C64_BASIC_END)

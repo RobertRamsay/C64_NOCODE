@@ -8,6 +8,7 @@ var _y1 = 76;
 var _x2 = gui_w - 16;
 var _y2 = gui_h - 46;
 
+if (ws != WS_UI) { hud_away = true; }
 switch (ws)
 {
     case WS_HOME:    ws_home_draw(_x1, _y1, _x2, _y2);    break;
@@ -26,6 +27,7 @@ switch (ws)
     case WS_MUSIC:   ws_music_draw(_x1, _y1, _x2, _y2);   break;
     case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
     case WS_BITMAPS: ws_bitmap_draw(_x1, _y1, _x2, _y2);  break;
+    case WS_UI:      ws_hud_draw(_x1, _y1, _x2, _y2);     break;
 }
 
 draw_topbar(gui_w);

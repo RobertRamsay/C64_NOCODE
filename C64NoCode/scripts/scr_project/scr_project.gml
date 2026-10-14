@@ -99,7 +99,9 @@ function project_new()
         pic_title : -1,
         pic_load : -1,
         pic_over : -1,
-        pic_win : -1
+        pic_win : -1,
+        // the UI page: the custom HUD
+        hud : hud_new()
     };
     for (var i = 0; i < 8; i++)
     {
@@ -386,6 +388,7 @@ function project_from_loaded(_raw)
     if (array_length(_lvls) == 0) { _lvls = [level_new("Level 1", 40, 12)]; }
     _p.levels = _lvls;
     bmp_project_fix(_p);
+    hud_project_fix(_p);
     return _p;
 }
 

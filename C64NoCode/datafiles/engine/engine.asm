@@ -3524,7 +3524,8 @@ fv1:
     rts
 
 ; ---------------------------------------------------------------------
-; HUD
+; HUD (a custom HUD - UI page - brings its own three routines)
+    .if HUD_STD
 hud_draw_static:
     ldx #0
     lda #32
@@ -3585,6 +3586,8 @@ hud_update:
     sta SCR+HUDROW*40+34
 hu_r:
     rts
+
+    .endif
 
 hud_bcd:
     pha

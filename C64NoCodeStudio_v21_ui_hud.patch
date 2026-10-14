@@ -1,0 +1,1558 @@
+diff --git a/C64NoCode/C64NoCodeStudio.yyp b/C64NoCode/C64NoCodeStudio.yyp
+index 1cefd0c..b4e160a 100644
+--- a/C64NoCode/C64NoCodeStudio.yyp
++++ b/C64NoCode/C64NoCodeStudio.yyp
+@@ -43,6 +43,7 @@
+     {"id":{"name":"scr_digi","path":"scripts/scr_digi/scr_digi.yy",},},
+     {"id":{"name":"scr_engine_gen","path":"scripts/scr_engine_gen/scr_engine_gen.yy",},},
+     {"id":{"name":"scr_gfx","path":"scripts/scr_gfx/scr_gfx.yy",},},
++    {"id":{"name":"scr_hud","path":"scripts/scr_hud/scr_hud.yy",},},
+     {"id":{"name":"scr_machine","path":"scripts/scr_machine/scr_machine.yy",},},
+     {"id":{"name":"scr_mod","path":"scripts/scr_mod/scr_mod.yy",},},
+     {"id":{"name":"scr_music","path":"scripts/scr_music/scr_music.yy",},},
+@@ -63,6 +64,7 @@
+     {"id":{"name":"scr_ws_animate","path":"scripts/scr_ws_animate/scr_ws_animate.yy",},},
+     {"id":{"name":"scr_ws_bitmap","path":"scripts/scr_ws_bitmap/scr_ws_bitmap.yy",},},
+     {"id":{"name":"scr_ws_home","path":"scripts/scr_ws_home/scr_ws_home.yy",},},
++    {"id":{"name":"scr_ws_hud","path":"scripts/scr_ws_hud/scr_ws_hud.yy",},},
+     {"id":{"name":"scr_ws_logic","path":"scripts/scr_ws_logic/scr_ws_logic.yy",},},
+     {"id":{"name":"scr_ws_music","path":"scripts/scr_ws_music/scr_ws_music.yy",},},
+     {"id":{"name":"scr_ws_screen","path":"scripts/scr_ws_screen/scr_ws_screen.yy",},},
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index 0b64116..7ed8e07 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -3524,7 +3524,8 @@ fv1:
+     rts
+ 
+ ; ---------------------------------------------------------------------
+-; HUD
++; HUD (a custom HUD - UI page - brings its own three routines)
++    .if HUD_STD
+ hud_draw_static:
+     ldx #0
+     lda #32
+@@ -3586,6 +3587,8 @@ hud_update:
+ hu_r:
+     rts
+ 
++    .endif
++
+ hud_bcd:
+     pha
+     lsr
+diff --git a/C64NoCode/objects/obj_app/CleanUp_0.gml b/C64NoCode/objects/obj_app/CleanUp_0.gml
+index 54f127d..572aea0 100644
+--- a/C64NoCode/objects/obj_app/CleanUp_0.gml
++++ b/C64NoCode/objects/obj_app/CleanUp_0.gml
+@@ -18,6 +18,7 @@ for (var bt = 0; bt < array_length(_bmt); bt++)
+     if (surface_exists(bm_thumbs[$ _bmt[bt]].surf)) { surface_free(bm_thumbs[$ _bmt[bt]].surf); }
+ }
+ bm_import_cancel();
++hud_gfx_free();
+ if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }
+ if (surface_exists(tile_atlas)) { surface_free(tile_atlas); }
+ for (var tp = 0; tp < array_length(tpl_prev); tp++)
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index 6a62eee..cb25ae2 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -290,6 +290,20 @@ bm_imp = undefined;
+ bm_tab = 0;
+ bm_cache = { ref : undefined, src : "", w : 0, buf : -1, rgba : -1, surf : -1, d1 : 0, d2 : -1 };
+ bm_thumbs = {};
++// the UI page (custom HUD)
++hud_sel = 0;
++hud_drag = -1;
++hud_drag_dx = 0;
++hud_drag_dy = 0;
++hud_edit_tab = 0;
++hud_pen = 1;
++hud_font_char = 1;
++hud_drawing = false;
++hud_sheet = -1;
++hud_prev_surf = -1;
++hud_sheet_key = "";
++hud_sheet_tick = 0;
++hud_away = true;
+ mus_pl = undefined;
+ mus_queue = -1;
+ mus_inst = -1;
+diff --git a/C64NoCode/objects/obj_app/Draw_64.gml b/C64NoCode/objects/obj_app/Draw_64.gml
+index b26668b..9ddbeca 100644
+--- a/C64NoCode/objects/obj_app/Draw_64.gml
++++ b/C64NoCode/objects/obj_app/Draw_64.gml
+@@ -8,6 +8,7 @@ var _y1 = 76;
+ var _x2 = gui_w - 16;
+ var _y2 = gui_h - 46;
+ 
++if (ws != WS_UI) { hud_away = true; }
+ switch (ws)
+ {
+     case WS_HOME:    ws_home_draw(_x1, _y1, _x2, _y2);    break;
+@@ -26,6 +27,7 @@ switch (ws)
+     case WS_MUSIC:   ws_music_draw(_x1, _y1, _x2, _y2);   break;
+     case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
+     case WS_BITMAPS: ws_bitmap_draw(_x1, _y1, _x2, _y2);  break;
++    case WS_UI:      ws_hud_draw(_x1, _y1, _x2, _y2);     break;
+ }
+ 
+ draw_topbar(gui_w);
+diff --git a/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml b/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
+index ffa58e8..a0122d1 100644
+--- a/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
++++ b/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
+@@ -1081,7 +1081,7 @@ function bmp_emit_game(L, _p, _l, _kind)
+     }
+     else
+     {
+-        array_push(L, " lda $dd00", " ora #3", " sta $dd00", " lda #$15", " sta $d018", " lda #$c8", " sta $d016");
++        array_push(L, " lda $dd00", " ora #3", " sta $dd00", " jsr set_chars", " lda #$c8", " sta $d016");
+         array_push(L, " lda pic_sv0", " sta $d020", " lda pic_sv1", " sta $d021", " jsr draw_screen", " jsr draw_hud", " lda #$1b", " sta $d011", " rts");
+     }
+     bmp_emit_copy(L, _s, _d);
+diff --git a/C64NoCode/scripts/scr_codegen/scr_codegen.gml b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+index 67bdcb3..8d43526 100644
+--- a/C64NoCode/scripts/scr_codegen/scr_codegen.gml
++++ b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+@@ -190,7 +190,7 @@ function codegen_project(_p)
+     array_push(L, " ldx #0", " lda #0");
+     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
+     array_push(L, " lda #" + string(_p.border), " sta $d020", " lda #" + string(_p.background), " sta $d021");
+-    array_push(L, " lda #$1b", " sta $d011", " lda #$15", " sta $d018", " lda #$c8", " sta $d016");
++    array_push(L, " lda #$1b", " sta $d011", " jsr set_chars", " lda #$c8", " sta $d016");
+     array_push(L, " jsr draw_screen");
+     array_push(L, " jsr sfx_init");
+     // the screen's song (Music page: Where the music plays); one already playing carries on
+@@ -421,11 +421,17 @@ function codegen_project(_p)
+         array_push(L, " lda scr_data+" + _o + ",x", " sta $0400+" + _o + ",x");
+         array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
+     }
+-    array_push(L, " inx", " cpx #250", " bne cpy1", " rts");
+-    array_push(L, "draw_hud:");
++    array_push(L, " inx", " cpx #250", " bne cpy1");
++    // the UI page's custom HUD: draw_screen runs on into its panel, then its own draw_hud
++    var _hud_on = hud_emit_single(L, _p);
++    if (!_hud_on) { array_push(L, " rts"); }
++    hud_emit_set_chars(L, _p);
++    var _hw = hud_warnings(_p);
++    for (var hw = 0; hw < array_length(_hw); hw++) { array_push(_warn, _hw[hw]); }
++    if (!_hud_on) { array_push(L, "draw_hud:"); }
+     var _hc = string(_p.hud_colour);
+     var _row = clamp(_p.hud_row, 0, 24);
+-    if (_p.show_score)
++    if (!_hud_on && _p.show_score)
+     {
+         var _base = 1024 + _row * 40 + 1;
+         var _lab = "SCORE ";
+@@ -444,7 +450,7 @@ function codegen_project(_p)
+             array_push(L, " ora #48", " sta " + string(_d + dd), " lda #" + _hc, " sta " + string(_d + dd + 54272));
+         }
+     }
+-    if (_p.show_lives)
++    if (!_hud_on && _p.show_lives)
+     {
+         var _lb = 1024 + _row * 40 + 31;
+         var _ll = "LIVES ";
+@@ -455,7 +461,7 @@ function codegen_project(_p)
+         }
+         array_push(L, " lda lives", " ora #48", " sta " + string(_lb + 6), " lda #" + _hc, " sta " + string(_lb + 6 + 54272));
+     }
+-    array_push(L, " rts");
++    if (!_hud_on) { array_push(L, " rts"); }
+ 
+     array_push(L, "add_score:", " sed", " clc", " adc score_lo", " sta score_lo", " txa", " adc score_hi", " sta score_hi", " cld", " bcc as1");
+     array_push(L, " lda #$99", " sta score_lo", " sta score_hi", "as1:", " jmp draw_hud");
+@@ -521,6 +527,8 @@ function codegen_project(_p)
+     // sprites turned round for the Animate page (slots 32 on)
+     anim_emit_mirrors(L, _p, _ab);
+     array_push(L, "spr_end:");
++    // the custom HUD's own character set (when its frame or font needs one): the VIC-II must see it
++    hud_emit_chars_single(L, _p);
+     array_push(L, "scr_data:");
+     for (var sr = 0; sr < 25; sr++) { array_push(L, " .byte " + cg_join_bytes(_p.chars, sr * 40, 40)); }
+     array_push(L, "col_data:");
+@@ -557,6 +565,13 @@ function build_prg(_path)
+         build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr_end)) + ", past $4000 where the VIC-II can see them. Use fewer rules, switch a group off, or turn fewer sprites round on the Animate page.";
+         return false;
+     }
++    var _hce = _res.labels[$ "hud_chars_end"];
++    if (!is_undefined(_hce) && _hce > 16384)
++    {
++        build_ok = false;
++        build_msg = "Build failed - the custom HUD's characters would end at $" + string_upper(dec_to_hex(_hce)) + ", past $4000 where the VIC-II can see them. On the UI page use the C64 font and no frame, or make the code shorter.";
++        return false;
++    }
+     if (_end > C64_BASIC_END)
+     {
+         build_ok = false;
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index e3cab13..1d39056 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -204,6 +204,11 @@ function engine_codegen(_p)
+     // the Bitmaps page: title, game over, you win and before-level bitmaps
+     var _pics = bmp_game_list(_p);
+     var _pic_on = (array_length(_pics) > 0) ? 1 : 0;
++    // the UI page: a custom HUD brings its own routines, characters and hi-res panel
++    var _hud_on = _p.hud.on;
++    var _hcs = hud_charset(_p);
++    var _hw = hud_warnings(_p);
++    for (var hw = 0; hw < array_length(_hw); hw++) { array_push(_warn, _hw[hw]); }
+ 
+     array_push(L, "; ===== " + _p.name + " - generated by C64 No-Code Studio =====");
+     array_push(L, "* = $0801");
+@@ -214,7 +219,7 @@ function engine_codegen(_p)
+         ["SCROLL_H", _sh], ["SCROLL_V", _sv], ["FLIP", _flip], ["FOLLOW", _follow],
+         ["AUTO_H", _auto_h], ["AUTO_V", _auto_v], ["AUTODIV", _autodiv[clamp(_e.auto_speed, 0, 2)]],
+         ["WTOP", _wtop], ["WROWS", _wrows], ["HUDROW", 0], ["FULLCOL", _e.fullcol],
+-        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", 8 | _mcbit],
++        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1],
+         ["BORDER", _e.border], ["BG", _e.bg], ["MC1", _e.mc1], ["MC2", _e.mc2], ["SMC1", _e.smc1], ["SMC2", _e.smc2],
+         ["PSPEED", clamp(_e.pspeed, 1, 4)], ["JUMPV", clamp(_e.jumpv, 2, 9)], ["GRAVDIV", _gravdiv[clamp(_e.grav, 0, 2)]],
+         ["MAXFALL", clamp(_e.maxfall, 2, 8)], ["WEAPON_ON", (_wpn > 0)], ["WEAPON_DOUBLE", (_wpn == 2)], ["WEAPON_SPREAD", (_wpn == 3)],
+@@ -442,6 +447,7 @@ function engine_codegen(_p)
+     var _hud = "SCORE 000000 LIVES 3";
+     if (_need_any) { _hud += "     GEMS 00/00"; }
+     array_push(L, "hud_txt:", " .byte " + eng_text(_hud, false));
++    if (_hud_on) { hud_emit_map(L, _p); }
+     array_push(L, "txt_over:", " .byte " + cg_text_bytes(_p.over_text));
+     array_push(L, "txt_win:", " .byte " + cg_text_bytes(_p.win_text));
+ 
+@@ -487,7 +493,7 @@ function engine_codegen(_p)
+     array_push(L, "chr_src:");
+     for (var cb = 0; cb < 2048; cb += 64)
+     {
+-        array_push(L, " .byte " + cg_join_bytes(_p.charset, cb, 64));
++        array_push(L, " .byte " + cg_join_bytes(_hcs.bytes, cb, 64));
+     }
+     array_push(L, "data_end:");
+     return { src : string_join_ext("\n", L), warnings : _warn, lines : L };
+diff --git a/C64NoCode/scripts/scr_hud/scr_hud.gml b/C64NoCode/scripts/scr_hud/scr_hud.gml
+new file mode 100644
+index 0000000..b5a583a
+--- /dev/null
++++ b/C64NoCode/scripts/scr_hud/scr_hud.gml
+@@ -0,0 +1,778 @@
++/// C64 NO-CODE STUDIO - the custom HUD (UI page, ported from ADAM's UI page): a panel strip at
++/// the top or bottom of the screen (1 to 6 text rows), drawn with a 9-slice frame of 9 characters
++/// (corners, edges and a fill), a font style (or a font drawn on the page) and the fields: text,
++/// score, lives, the level goal and the level, each with its own place and colour.
++///
++/// The C64 way: the panel is made of characters, so each 8 x 8 square has one colour on the
++/// screen's background colour (the frame editor keeps to that), and a letter replaces the frame
++/// character it sits on. A single-screen game gets its own copy of the character set (2 KB) when the
++/// frame or the font needs it; a map game puts the frame into 9 characters its tiles leave free.
++
++#macro HUD_ROWS_MAX 6
++#macro HUD_LABEL_MAX 19
++#macro HUD_FIELDS_MAX 12
++
++function hud_font_styles()
++{
++    return ["C64", "Bold", "Thin", "Italic", "Bold italic", "Custom (drawn here)"];
++}
++
++function hud_frame_styles()
++{
++    return ["Line", "Double line", "Rounded", "Bevel", "Rivets", "Neon", "Bricks"];
++}
++
++function hud_field_types()
++{
++    return ["Text", "Score", "Lives", "Goal", "Level"];
++}
++
++/// Field types this kind of game has (Goal and Level belong to map games)
++function hud_type_count(_p)
++{
++    return (_p.game_type == 1) ? 5 : 3;
++}
++
++/// The custom HUD of a new project: off (the standard HUD is used)
++function hud_new()
++{
++    return {
++        on : false,                         // use the custom HUD
++        bottom : false,                     // the panel at the bottom (single-screen games)
++        rows : 3,                           // text rows, 8 lines each
++        frame_on : true,                    // draw the 9-slice frame
++        style : "Line",                     // the preset the frame came from ("Custom" once drawn on)
++        frame : array_create(576, 0),       // 24 x 24 pixels, 1 = set
++        fcols : array_create(9, 1),         // one colour for each of the 9 characters
++        font_style : 0,                     // hud_font_styles()
++        font : [],                          // 64 x 8 bytes when font_style is Custom
++        fields : []                         // hud_field_new()
++    };
++}
++
++function hud_field_new(_type)
++{
++    return { type : _type, label : "", col : 1, row : 0, colour : 1, digits : 4 };
++}
++
++/// The custom HUD of a loaded project, made safe
++function hud_from_loaded(_raw)
++{
++    var _u = hud_new();
++    if (!is_struct(_raw)) { return _u; }
++    struct_overlay(_u, _raw);
++    if (!is_bool(_u.on)) { _u.on = (is_numeric(_u.on) && _u.on != 0); }
++    if (!is_bool(_u.bottom)) { _u.bottom = (is_numeric(_u.bottom) && _u.bottom != 0); }
++    if (!is_bool(_u.frame_on)) { _u.frame_on = (is_numeric(_u.frame_on) && _u.frame_on != 0); }
++    if (!is_numeric(_u.rows)) { _u.rows = 3; }
++    _u.rows = clamp(floor(_u.rows), 1, HUD_ROWS_MAX);
++    if (!is_string(_u.style)) { _u.style = "Line"; }
++    if (!is_array(_u.frame) || array_length(_u.frame) != 576) { _u.frame = array_create(576, 0); }
++    for (var i = 0; i < 576; i++) { _u.frame[i] = (is_numeric(_u.frame[i]) && _u.frame[i] != 0) ? 1 : 0; }
++    if (!is_array(_u.fcols) || array_length(_u.fcols) != 9) { _u.fcols = array_create(9, 1); }
++    for (var c = 0; c < 9; c++) { _u.fcols[c] = is_numeric(_u.fcols[c]) ? clamp(floor(_u.fcols[c]), 0, 15) : 1; }
++    if (!is_numeric(_u.font_style)) { _u.font_style = 0; }
++    _u.font_style = clamp(floor(_u.font_style), 0, 5);
++    if (!is_array(_u.font) || array_length(_u.font) != 512) { _u.font = []; }
++    for (var b = 0; b < array_length(_u.font); b++) { _u.font[b] = is_numeric(_u.font[b]) ? (floor(_u.font[b]) & 255) : 0; }
++    if (_u.font_style == 5 && array_length(_u.font) != 512) { _u.font_style = 0; }
++    var _fl = [];
++    if (is_array(_u.fields))
++    {
++        for (var f = 0; f < min(HUD_FIELDS_MAX, array_length(_u.fields)); f++)
++        {
++            var _src = _u.fields[f];
++            if (!is_struct(_src)) { continue; }
++            var _fd = struct_overlay(hud_field_new(0), _src);
++            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 4) : 0;
++            if (!is_string(_fd.label)) { _fd.label = ""; }
++            _fd.label = string_upper(string_copy(_fd.label, 1, HUD_LABEL_MAX));
++            _fd.col = is_numeric(_fd.col) ? clamp(floor(_fd.col), 0, 39) : 0;
++            _fd.row = is_numeric(_fd.row) ? clamp(floor(_fd.row), 0, HUD_ROWS_MAX - 1) : 0;
++            _fd.colour = is_numeric(_fd.colour) ? clamp(floor(_fd.colour), 0, 15) : 1;
++            _fd.digits = is_numeric(_fd.digits) ? clamp(floor(_fd.digits), 1, 6) : 4;
++            array_push(_fl, _fd);
++        }
++    }
++    _u.fields = _fl;
++    return _u;
++}
++
++/// After loading (or making) a project
++function hud_project_fix(_p)
++{
++    _p.hud = hud_from_loaded(_p[$ "hud"]);
++}
++
++/// How many rows the panel can have: a map game's panel sits above the scrolling window
++function hud_rows_max(_p)
++{
++    if (_p.game_type == 1) { return clamp(_p.eng.wtop, 2, 4); }
++    return HUD_ROWS_MAX;
++}
++
++/// The panel's rows as they will be built (a map game's are capped by its window)
++function hud_rows(_p, _u)
++{
++    return clamp(_u.rows, 1, hud_rows_max(_p));
++}
++
++/// First text row of the panel on the screen
++function hud_row0(_p, _u)
++{
++    if (_p.game_type == 0 && _u.bottom) { return 25 - hud_rows(_p, _u); }
++    return 0;
++}
++
++// ---------------------------------------------------------------------------
++// The frame presets: a pixel is set or not, and each of the 9 characters has a colour
++// ---------------------------------------------------------------------------
++
++/// Is pixel (_px, _py) of a preset's 24 x 24 frame set?
++function hud_frame_pixel(_style, _px, _py)
++{
++    var _d = min(_px, _py, 23 - _px, 23 - _py);
++    switch (_style)
++    {
++        case "Line": return (_d == 3);
++        case "Double line": return (_d == 1 || _d == 4);
++        case "Rounded":
++            if ((_px < 8 || _px > 15) && (_py < 8 || _py > 15))
++            {
++                var _cx = (_px < 8) ? 8 : 15;
++                var _cy = (_py < 8) ? 8 : 15;
++                var _r = point_distance(_px, _py, _cx, _cy);
++                return (_r >= 4.6 && _r < 5.8);
++            }
++            return (_d == 3);
++        case "Bevel": return (_d <= 2);
++        case "Rivets":
++            if (_d > 5) { return false; }
++            // a rivet in each corner: a ring of 4 x 4 with a dot
++            if ((_px < 8 || _px > 15) && (_py < 8 || _py > 15))
++            {
++                var _rx = (_px < 8) ? 3 : 20;
++                var _ry = (_py < 8) ? 3 : 20;
++                var _q = max(abs(_px - _rx), abs(_py - _ry));
++                if (_q == 1 && !(abs(_px - _rx) == 1 && abs(_py - _ry) == 1)) { return false; }
++            }
++            return (_d != 5) || ((_px + _py) mod 2 == 0);
++        case "Neon": return (_d == 2 || _d == 3);
++        case "Bricks":
++            var _off = ((_py div 4) mod 2 == 1) ? 4 : 0;
++            return !(_py mod 4 == 3 || (_px + _off) mod 8 == 7);
++    }
++    return false;
++}
++
++/// The 9 characters' colours of a preset: [top-left, top, top-right, left, fill, right, ...]
++function hud_frame_colours(_style)
++{
++    switch (_style)
++    {
++        case "Line":        return [15, 15, 15, 15, 15, 15, 15, 15, 15];
++        case "Double line": return [14, 14, 14, 14, 14, 14, 14, 14, 14];
++        case "Rounded":     return [7, 7, 7, 7, 7, 7, 7, 7, 7];
++        case "Bevel":       return [1, 1, 15, 1, 12, 11, 15, 11, 11];
++        case "Rivets":      return [15, 12, 15, 12, 12, 12, 15, 12, 15];
++        case "Neon":        return [4, 3, 4, 3, 3, 3, 4, 3, 4];
++        case "Bricks":      return [2, 2, 2, 2, 2, 2, 2, 2, 2];
++    }
++    return array_create(9, 1);
++}
++
++/// A frame preset: sets the pixels and the colours (the fill stays empty so letters read well)
++function hud_apply_preset(_u, _style)
++{
++    _u.style = _style;
++    for (var _py = 0; _py < 24; _py++)
++    {
++        for (var _px = 0; _px < 24; _px++)
++        {
++            var _in = (_px >= 8 && _px < 16 && _py >= 8 && _py < 16);
++            _u.frame[_py * 24 + _px] = (!_in && hud_frame_pixel(_style, _px, _py)) ? 1 : 0;
++        }
++    }
++    _u.fcols = hud_frame_colours(_style);
++}
++
++/// The 8 bytes of one of the 9 frame characters (0 = top-left ... 8 = bottom-right)
++function hud_slice_bytes(_u, _s)
++{
++    var _out = array_create(8, 0);
++    var _ox = (_s mod 3) * 8;
++    var _oy = (_s div 3) * 8;
++    for (var r = 0; r < 8; r++)
++    {
++        var _v = 0;
++        for (var b = 0; b < 8; b++)
++        {
++            if (_u.frame[(_oy + r) * 24 + _ox + b] != 0) { _v |= (0x80 >> b); }
++        }
++        _out[r] = _v;
++    }
++    return _out;
++}
++
++// ---------------------------------------------------------------------------
++// The font and the character set
++// ---------------------------------------------------------------------------
++
++/// The letters before any style: the C64's own (single screen) or the Charset page's (map game)
++function hud_font_base(_p)
++{
++    var _out = array_create(512, 0);
++    var _src = (_p.game_type == 1) ? _p.charset : global.chargen_rom;
++    if (is_array(_src) && array_length(_src) >= 512) { array_copy(_out, 0, _src, 0, 512); }
++    return _out;
++}
++
++/// The HUD's font: 64 characters (screen codes 0..63: @, A-Z, signs and digits) x 8 rows
++function hud_font_bytes(_p, _u)
++{
++    var _st = _u.font_style;
++    if (_st == 5 && array_length(_u.font) == 512) { return _u.font; }
++    var _out = hud_font_base(_p);
++    if (_st == 0) { return _out; }
++    var _base = array_create(512, 0);
++    array_copy(_base, 0, _out, 0, 512);
++    for (var c = 0; c < 64; c++)
++    {
++        for (var i = 0; i < 8; i++)
++        {
++            var _r = _base[c * 8 + i];
++            if (_st == 1 || _st == 4) { _r = (_r | (_r >> 1)) & 255; }
++            // thin: the right-hand pixel of each run goes (2-wide strokes become 1, long bars stay)
++            if (_st == 2) { _r = _r & ~(_r & (_r >> 1) & ~(_r << 1)) & 255; }
++            if (_st == 3 || _st == 4)
++            {
++                if (i < 3) { _r = _r >> 1; }
++                else if (i >= 5) { _r = (_r << 1) & 255; }
++            }
++            _out[c * 8 + i] = _r;
++        }
++    }
++    return _out;
++}
++
++/// Character codes the game doesn't use, best first (for the frame's 9 characters)
++function hud_free_codes(_p)
++{
++    var _used = array_create(256, false);
++    for (var i = 0; i < 64; i++) { _used[i] = true; }
++    if (_p.game_type == 1)
++    {
++        for (var t = 0; t < min(64, array_length(_p.tiles)); t++)
++        {
++            for (var k = 0; k < 4; k++) { _used[clamp(_p.tiles[t].c[k], 0, 255)] = true; }
++        }
++    }
++    else
++    {
++        for (var s = 0; s < 1000; s++) { _used[clamp(_p.chars[s], 0, 255)] = true; }
++    }
++    _used[160] = true;                     // the reversed space: keep it for solid blocks
++    var _out = [];
++    for (var c = 255; c >= 64; c--)
++    {
++        if (!_used[c]) { array_push(_out, c); }
++    }
++    return _out;
++}
++
++/// What the custom HUD needs of the character set:
++/// { need : a charset of its own (single screen), codes : the 9 frame characters (or []), bytes : 2048, missing : not enough free characters }
++function hud_charset(_p)
++{
++    var _u = _p.hud;
++    var _out = { need : false, codes : [], bytes : [], missing : false };
++    var _b = array_create(2048, 0);
++    var _src = (_p.game_type == 1) ? _p.charset : global.chargen_rom;
++    if (is_array(_src) && array_length(_src) == 2048) { array_copy(_b, 0, _src, 0, 2048); }
++    _out.bytes = _b;
++    if (!_u.on) { return _out; }
++    if (_u.font_style != 0)
++    {
++        var _f = hud_font_bytes(_p, _u);
++        array_copy(_b, 0, _f, 0, 512);
++        _out.need = true;
++    }
++    if (_u.frame_on)
++    {
++        var _free = hud_free_codes(_p);
++        if (array_length(_free) < 9) { _out.missing = true; }
++        else
++        {
++            for (var s = 0; s < 9; s++)
++            {
++                var _code = _free[s];
++                array_push(_out.codes, _code);
++                var _sb = hud_slice_bytes(_u, s);
++                for (var r = 0; r < 8; r++) { _b[_code * 8 + r] = _sb[r]; }
++            }
++            _out.need = true;
++        }
++    }
++    if (_p.game_type == 1) { _out.need = false; }   // a map game always has its own (the Charset page's)
++    return _out;
++}
++
++// ---------------------------------------------------------------------------
++// The panel: what each of its cells shows
++// ---------------------------------------------------------------------------
++
++/// Is this field a number the game keeps up to date?
++function hud_field_live(_f)
++{
++    return (_f.type >= 1);
++}
++
++/// The digits a number field really shows (a single-screen score has 4, a map game's 6)
++function hud_field_digits(_p, _f)
++{
++    switch (_f.type)
++    {
++        case 1: return _f.digits;
++        case 2: return _f.digits;
++        case 4: return clamp(_f.digits, 1, 2);
++    }
++    return 0;
++}
++
++/// The value part of a field: sample numbers for the preview, zeros for the game (it fills them in)
++function hud_field_value(_p, _f, _sample)
++{
++    var _d = hud_field_digits(_p, _f);
++    switch (_f.type)
++    {
++        case 1:
++            var _sv = _sample ? 1230 : 0;
++            return string_replace_all(string_format(_sv mod power(10, _d), _d, 0), " ", "0");
++        case 2:
++            var _lv = _sample ? clamp(_p.lives, 0, 9) : 0;
++            if (_p.game_type == 1) { _lv = _sample ? clamp(_p.eng.lives, 1, 9) : 0; }
++            return string_replace_all(string_format(_lv, _d, 0), " ", "0");
++        case 3:
++            if (!_sample) { return "00/00"; }
++            var _need = 12;
++            if (_p.game_type == 1 && array_length(_p.levels) > 0 && _p.levels[0].need > 0) { _need = clamp(_p.levels[0].need, 1, 99); }
++            return "05/" + string_replace_all(string_format(_need, 2, 0), " ", "0");
++        case 4:
++            return string_replace_all(string_format(1, _d, 0), " ", "0");
++    }
++    return "";
++}
++
++/// The whole text of a field
++function hud_field_text(_p, _f, _sample)
++{
++    if (_f.type >= hud_type_count(_p)) { return _f.label; }
++    return _f.label + hud_field_value(_p, _f, _sample);
++}
++
++/// The panel's cells: { rows, row0, scr : codes (-1 = left as it is), col : colours, live : [{ f, pos }] }
++/// _codes: the frame's 9 characters ([] = no frame)
++function hud_cells(_p, _codes, _sample)
++{
++    var _u = _p.hud;
++    var _rows = hud_rows(_p, _u);
++    var _n = _rows * 40;
++    var _scr = array_create(_n, -1);
++    var _col = array_create(_n, 0);
++    if (_p.game_type == 1)
++    {
++        // a map game's HUD rows are cleared first: spaces
++        for (var i = 0; i < _n; i++) { _scr[i] = 32; _col[i] = 1; }
++    }
++    if (_u.frame_on && array_length(_codes) == 9)
++    {
++        for (var r = 0; r < _rows; r++)
++        {
++            // 1 row: the sides only; 2 rows: the screen's edge stands in for the frame's outer edge
++            var _sr = 1;
++            if (_rows >= 3) { _sr = (r == 0) ? 0 : ((r == _rows - 1) ? 2 : 1); }
++            else if (_rows == 2)
++            {
++                if (hud_row0(_p, _u) == 0) { _sr = (r == 0) ? 1 : 2; }
++                else { _sr = (r == 0) ? 0 : 1; }
++            }
++            for (var c = 0; c < 40; c++)
++            {
++                var _sc = (c == 0) ? 0 : ((c == 39) ? 2 : 1);
++                var _s = _sr * 3 + _sc;
++                _scr[r * 40 + c] = _codes[_s];
++                _col[r * 40 + c] = _u.fcols[_s];
++            }
++        }
++    }
++    var _live = [];
++    for (var f = 0; f < array_length(_u.fields); f++)
++    {
++        var _fd = _u.fields[f];
++        if (_fd.row >= _rows) { continue; }
++        var _t = string_upper(hud_field_text(_p, _fd, _sample));
++        for (var k = 0; k < string_length(_t); k++)
++        {
++            var _cx = _fd.col + k;
++            if (_cx >= 40) { break; }
++            _scr[_fd.row * 40 + _cx] = scr_code_from_char(string_char_at(_t, k + 1)) & 63;
++            _col[_fd.row * 40 + _cx] = _fd.colour;
++        }
++        if (_fd.type >= 1 && _fd.type < hud_type_count(_p)) { array_push(_live, { f : _fd, pos : _fd.row * 40 + _fd.col + string_length(_fd.label) }); }
++    }
++    return { rows : _rows, row0 : hud_row0(_p, _u), scr : _scr, col : _col, live : _live };
++}
++
++/// The row new text goes on: inside the frame (the middle row)
++function hud_text_row(_p)
++{
++    var _rows = hud_rows(_p, _p.hud);
++    if (_rows >= 3) { return 1; }
++    if (_rows == 2 && hud_row0(_p, _p.hud) > 0) { return 1; }
++    return 0;
++}
++
++/// Fields like the standard HUD
++function hud_default_fields(_p)
++{
++    var _f = [];
++    var _row = hud_text_row(_p);
++    if (_p.game_type == 1)
++    {
++        var _hc = clamp(_p.eng.hudcol, 0, 15);
++        var _s = hud_field_new(1);
++        _s.label = "SCORE "; _s.col = 2; _s.row = _row; _s.colour = _hc; _s.digits = 6;
++        array_push(_f, _s);
++        var _l = hud_field_new(2);
++        _l.label = "LIVES "; _l.col = 16; _l.row = _row; _l.colour = _hc; _l.digits = 1;
++        array_push(_f, _l);
++        var _need = false;
++        for (var i = 0; i < array_length(_p.levels); i++)
++        {
++            if (_p.levels[i].need > 0) { _need = true; }
++        }
++        if (_need)
++        {
++            var _g = hud_field_new(3);
++            _g.label = "GEMS "; _g.col = 25; _g.row = _row; _g.colour = 7;
++            array_push(_f, _g);
++        }
++        else
++        {
++            var _v = hud_field_new(4);
++            _v.label = "LEVEL "; _v.col = 29; _v.row = _row; _v.colour = 7; _v.digits = 1;
++            array_push(_f, _v);
++        }
++        return _f;
++    }
++    var _hc2 = clamp(_p.hud_colour, 0, 15);
++    if (_p.show_score)
++    {
++        var _s2 = hud_field_new(1);
++        _s2.label = "SCORE "; _s2.col = 2; _s2.row = _row; _s2.colour = _hc2; _s2.digits = 4;
++        array_push(_f, _s2);
++    }
++    if (_p.show_lives)
++    {
++        var _l2 = hud_field_new(2);
++        _l2.label = "LIVES "; _l2.col = 30; _l2.row = _row; _l2.colour = _hc2; _l2.digits = 1;
++        array_push(_f, _l2);
++    }
++    return _f;
++}
++
++/// Switches the custom HUD on, starting from fields like the standard HUD and a line frame
++function hud_switch_on(_p)
++{
++    var _u = _p.hud;
++    _u.on = true;
++    var _blank = true;
++    for (var i = 0; i < 576; i++)
++    {
++        if (_u.frame[i] != 0) { _blank = false; }
++    }
++    if (_blank) { hud_apply_preset(_u, _u.style); }
++    _u.rows = clamp(_u.rows, 1, hud_rows_max(_p));
++    if (array_length(_u.fields) == 0) { _u.fields = hud_default_fields(_p); }
++}
++
++/// Bytes the custom HUD adds to the game (roughly: the panel, its code and a character set)
++function hud_bytes(_p)
++{
++    var _u = _p.hud;
++    if (!_u.on) { return 0; }
++    var _cs = hud_charset(_p);
++    var _n = hud_rows(_p, _u) * 80 + 40 + array_length(_u.fields) * 30;
++    if (_cs.need) { _n += 2048; }
++    return _n;
++}
++
++// ---------------------------------------------------------------------------
++// In the game
++// ---------------------------------------------------------------------------
++
++/// The code that writes number field _lv (at screen address _addr) - single-screen game
++function hud_emit_live_single(L, _p, _lv, _addr)
++{
++    var _f = _lv.f;
++    var _d = hud_field_digits(_p, _f);
++    if (_f.type == 1)
++    {
++        // score_lo / score_hi: 4 BCD digits; more digits are zeros in front
++        for (var i = 0; i < min(_d, 4); i++)
++        {
++            var _a = _addr + _d - 1 - i;
++            array_push(L, " lda " + ((i < 2) ? "score_lo" : "score_hi"));
++            if (i mod 2 == 1) { array_push(L, " lsr", " lsr", " lsr", " lsr"); }
++            else { array_push(L, " and #15"); }
++            array_push(L, " ora #48", " sta " + string(_a));
++        }
++    }
++    if (_f.type == 2) { array_push(L, " lda lives", " ora #48", " sta " + string(_addr + _d - 1)); }
++}
++
++/// The custom HUD of a single-screen game: hud_panel (the panel, after draw_screen) and
++/// draw_hud (the numbers, whenever they change). Returns false if the HUD is off.
++function hud_emit_single(L, _p)
++{
++    var _u = _p.hud;
++    if (!_u.on) { return false; }
++    var _cs = hud_charset(_p);
++    var _cells = hud_cells(_p, _cs.codes, false);
++    var _n = _cells.rows * 40;
++    var _base = 1024 + _cells.row0 * 40;
++    array_push(L, "hud_panel:");
++    var _full = true;
++    for (var i = 0; i < _n; i++)
++    {
++        if (_cells.scr[i] < 0) { _full = false; }
++    }
++    if (_full)
++    {
++        array_push(L, " ldx #0", "hudp1:", " lda hud_pscr,x", " sta " + string(_base) + ",x", " lda hud_pcol,x", " sta " + string(_base + 54272) + ",x", " inx", " cpx #" + string(_n), " bne hudp1");
++    }
++    else
++    {
++        for (var k = 0; k < _n; k++)
++        {
++            if (_cells.scr[k] < 0) { continue; }
++            array_push(L, " lda #" + string(_cells.scr[k]), " sta " + string(_base + k), " lda #" + string(_cells.col[k]), " sta " + string(_base + k + 54272));
++        }
++    }
++    array_push(L, "draw_hud:");
++    for (var v = 0; v < array_length(_cells.live); v++) { hud_emit_live_single(L, _p, _cells.live[v], _base + _cells.live[v].pos); }
++    array_push(L, " rts");
++    if (_full)
++    {
++        array_push(L, "hud_pscr:");
++        eng_emit_bytes(L, _cells.scr);
++        array_push(L, "hud_pcol:");
++        eng_emit_bytes(L, _cells.col);
++    }
++    return true;
++}
++
++/// The character set a single-screen game copies in (only when the frame or the font needs one)
++function hud_emit_chars_single(L, _p)
++{
++    var _cs = hud_charset(_p);
++    if (!_cs.need) { return false; }
++    array_push(L, " .align 2048", "hud_chars:");
++    for (var cb = 0; cb < 2048; cb += 64) { array_push(L, " .byte " + cg_join_bytes(_cs.bytes, cb, 64)); }
++    array_push(L, "hud_chars_end:");
++    return true;
++}
++
++/// set_chars: points the VIC-II at the game's characters (the ROM's, or the HUD's own copy)
++function hud_emit_set_chars(L, _p)
++{
++    array_push(L, "set_chars:");
++    if (hud_charset(_p).need) { array_push(L, " lda #>hud_chars", " lsr", " lsr", " and #$0e", " ora #$10", " sta $d018", " rts"); }
++    else { array_push(L, " lda #$15", " sta $d018", " rts"); }
++}
++
++/// The map engine's HUD routines (engine.asm leaves its own out when HUD_STD is 0)
++function hud_emit_map(L, _p)
++{
++    var _u = _p.hud;
++    var _cs = hud_charset(_p);
++    var _cells = hud_cells(_p, _cs.codes, false);
++    var _n = _cells.rows * 40;
++    array_push(L, "hud_draw_static:", " ldx #0", " lda #32", "hud_c1:", " sta SCR,x", " sta SCR+250,x", " sta SCR+500,x", " sta SCR+750,x", " inx", " cpx #250", " bne hud_c1");
++    array_push(L, " ldx #0", "hud_c2:", " lda hud_pscr,x", " sta SCR,x", " inx", " cpx #" + string(_n), " bne hud_c2", " rts");
++    array_push(L, "hud_draw_static_col:", " ldx #0", "hud_c3:", " lda hud_pcol,x", " sta COLR,x", " inx", " cpx #" + string(_n), " bne hud_c3", " rts");
++    array_push(L, "hud_update:");
++    for (var v = 0; v < array_length(_cells.live); v++)
++    {
++        var _lv = _cells.live[v];
++        var _f = _lv.f;
++        var _a = "SCR+" + string(_lv.pos);
++        var _d = hud_field_digits(_p, _f);
++        switch (_f.type)
++        {
++            case 1:
++                // score: 3 BCD bytes, the high one at score+2
++                for (var i = 0; i < _d; i++)
++                {
++                    array_push(L, " lda score+" + string(i div 2));
++                    if (i mod 2 == 1) { array_push(L, " lsr", " lsr", " lsr", " lsr"); }
++                    else { array_push(L, " and #15"); }
++                    array_push(L, " ora #48", " sta SCR+" + string(_lv.pos + _d - 1 - i));
++                }
++                break;
++            case 2:
++                array_push(L, " lda lives", " ora #48", " sta SCR+" + string(_lv.pos + _d - 1));
++                break;
++            case 3:
++                array_push(L, " lda need", " beq hud_g" + string(v), " lda need_got", " jsr bin2dec", " stx " + _a, " sta SCR+" + string(_lv.pos + 1));
++                array_push(L, " lda need", " jsr bin2dec", " stx SCR+" + string(_lv.pos + 3), " sta SCR+" + string(_lv.pos + 4), "hud_g" + string(v) + ":");
++                break;
++            case 4:
++                array_push(L, " lda level", " clc", " adc #1", " jsr bin2dec");
++                if (_d == 2) { array_push(L, " stx " + _a, " sta SCR+" + string(_lv.pos + 1)); }
++                else { array_push(L, " sta " + _a); }
++                break;
++        }
++    }
++    array_push(L, " rts");
++    array_push(L, "hud_pscr:");
++    eng_emit_bytes(L, _cells.scr);
++    array_push(L, "hud_pcol:");
++    eng_emit_bytes(L, _cells.col);
++}
++
++/// Warnings for the Build page
++function hud_warnings(_p)
++{
++    var _w = [];
++    var _u = _p.hud;
++    if (!_u.on) { return _w; }
++    var _cs = hud_charset(_p);
++    if (_cs.missing) { array_push(_w, "Custom HUD: no frame - the game needs 9 characters it doesn't use (it uses nearly all 256)."); }
++    if (_p.game_type == 1 && _u.rows > hud_rows_max(_p)) { array_push(_w, "Custom HUD: only " + string(hud_rows_max(_p)) + " rows fit above the scrolling window (World page: window top)."); }
++    for (var f = 0; f < array_length(_u.fields); f++)
++    {
++        var _fd = _u.fields[f];
++        if (_fd.type >= hud_type_count(_p)) { array_push(_w, "Custom HUD: a " + hud_field_types()[_fd.type] + " field only works in a map game - it shows its label only."); }
++        if (_fd.row >= hud_rows(_p, _u)) { array_push(_w, "Custom HUD: a field is on row " + string(_fd.row) + ", below the panel - it isn't shown."); }
++    }
++    if (_p.game_type == 0)
++    {
++        for (var g = 0; g < array_length(_u.fields); g++)
++        {
++            if (_u.fields[g].type == 1 && _u.fields[g].digits > 4) { array_push(_w, "Custom HUD: a single-screen score goes up to 9999 - the extra digits stay 0."); break; }
++        }
++    }
++    return _w;
++}
++
++// ---------------------------------------------------------------------------
++// The preview (UI page)
++// ---------------------------------------------------------------------------
++
++/// A glyph sheet of the game's character set with the HUD's font and frame (rebuilt on change)
++function hud_sheet_get()
++{
++    var _cs = hud_charset(proj);
++    var _key = string(proj.game_type) + "|" + json_stringify(proj.hud.frame) + json_stringify(proj.hud.font) + string(proj.hud.font_style) + string(proj.hud.on) + string(proj.hud.frame_on) + json_stringify(_cs.codes);
++    if (proj.game_type == 1) { _key += string(hud_sheet_tick); }
++    if (_key != hud_sheet_key || !sprite_exists(hud_sheet))
++    {
++        if (sprite_exists(hud_sheet)) { sprite_delete(hud_sheet); }
++        hud_sheet = glyph_sheet_sprite(_cs.bytes);
++        hud_sheet_key = _key;
++    }
++    return hud_sheet;
++}
++
++function hud_gfx_free()
++{
++    if (sprite_exists(hud_sheet)) { sprite_delete(hud_sheet); }
++    hud_sheet = -1;
++    hud_sheet_key = "";
++    if (surface_exists(hud_prev_surf)) { surface_free(hud_prev_surf); }
++    hud_prev_surf = -1;
++}
++
++/// Draws the game screen with the HUD at (_x, _y), _sc screen pixels per C64 pixel
++/// (drawn at 1:1 into a surface first, so no glyph bleeds into its neighbour when scaled)
++function hud_preview_draw(_dx, _dy, _dsc)
++{
++    if (!surface_exists(hud_prev_surf)) { hud_prev_surf = surface_create(320, 200); }
++    surface_set_target(hud_prev_surf);
++    draw_clear_alpha(c_black, 1);
++    hud_preview_render(0, 0, 1);
++    surface_reset_target();
++    gpu_set_texfilter(false);
++    draw_surface_ext(hud_prev_surf, _dx, _dy, _dsc, _dsc, 0, c_white, 1);
++    gpu_set_texfilter(true);
++}
++
++function hud_preview_render(_x, _y, _sc)
++{
++    var _p = proj;
++    var _u = _p.hud;
++    var _sheet = hud_sheet_get();
++    gpu_set_texfilter(false);
++    var _cs = 8 * _sc;
++    var _bgc = (_p.game_type == 1) ? _p.eng.bg : _p.background;
++    px_rect(_x, _y, 320 * _sc, 200 * _sc, c64col(_bgc));
++    if (_p.game_type == 1)
++    {
++        // the map game: the first level in its window, as the game starts
++        var _e = _p.eng;
++        var _wtop = clamp(_e.wtop, 2, 4);
++        var _wrows = clamp(_e.wrows, 6, 24 - _wtop);
++        if (array_length(_p.levels) > 0)
++        {
++            var _lv = _p.levels[0];
++            for (var tr = 0; tr < ceil(_wrows / 2); tr++)
++            {
++                for (var tc = 0; tc < 20; tc++)
++                {
++                    if (tr >= _lv.h || tc >= _lv.w) { continue; }
++                    var _t = _lv.map[tr * _lv.w + tc];
++                    var _ty = _y + (_wtop + tr * 2) * _cs;
++                    if ((tr * 2 + 1) >= _wrows) { draw_tile_img_part(_t, _x + tc * 2 * _cs, _ty, _sc); }
++                    else { draw_tile_img(_t, _x + tc * 2 * _cs, _ty, 16 * _sc); }
++                }
++            }
++        }
++    }
++    else
++    {
++        for (var r = 0; r < 25; r++)
++        {
++            for (var c = 0; c < 40; c++)
++            {
++                var _i = r * 40 + c;
++                var _ch = _p.chars[_i];
++                if (_ch == 32) { continue; }
++                draw_sprite_part_ext(_sheet, 0, (_ch mod 16) * 8, (_ch div 16) * 8, 8, 8, _x + c * _cs, _y + r * _cs, _sc, _sc, c64col(_p.cols[_i]), 1);
++            }
++        }
++    }
++    if (_u.on)
++    {
++        var _chs = hud_charset(_p);
++        var _cells = hud_cells(_p, _chs.codes, true);
++        for (var k = 0; k < _cells.rows * 40; k++)
++        {
++            var _code = _cells.scr[k];
++            if (_code < 0) { continue; }
++            var _px = _x + (k mod 40) * _cs;
++            var _py = _y + (_cells.row0 + k div 40) * _cs;
++            px_rect(_px, _py, _cs, _cs, c64col(_bgc));
++            draw_sprite_part_ext(_sheet, 0, (_code mod 16) * 8, (_code div 16) * 8, 8, 8, _px, _py, _sc, _sc, c64col(_cells.col[k]), 1);
++        }
++    }
++    gpu_set_texfilter(true);
++}
++
++/// The top half of a tile (a window with an odd number of rows ends half way down one)
++function draw_tile_img_part(_t, _x, _y, _sc)
++{
++    atlas_refresh();
++    var _ti = clamp(_t, 0, 63);
++    draw_surface_part_ext(tile_atlas, (_ti mod 8) * 16, (_ti div 8) * 16, 16, 8, _x, _y, _sc, _sc, c_white, 1);
++}
+diff --git a/C64NoCode/scripts/scr_hud/scr_hud.yy b/C64NoCode/scripts/scr_hud/scr_hud.yy
+new file mode 100644
+index 0000000..77fbd6d
+--- /dev/null
++++ b/C64NoCode/scripts/scr_hud/scr_hud.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_hud",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_hud",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index cb6a72a..286638c 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -99,7 +99,9 @@ function project_new()
+         pic_title : -1,
+         pic_load : -1,
+         pic_over : -1,
+-        pic_win : -1
++        pic_win : -1,
++        // the UI page: the custom HUD
++        hud : hud_new()
+     };
+     for (var i = 0; i < 8; i++)
+     {
+@@ -386,6 +388,7 @@ function project_from_loaded(_raw)
+     if (array_length(_lvls) == 0) { _lvls = [level_new("Level 1", 40, 12)]; }
+     _p.levels = _lvls;
+     bmp_project_fix(_p);
++    hud_project_fix(_p);
+     return _p;
+ }
+ 
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index 01ef7fa..29ede40 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -73,6 +73,11 @@ function tut_init()
+         tut_step(WS_BITMAPS, "bm_tool_0", "Tools", "Brush, line, box, ellipse, fill, dithered gradient, the C64's own letters, colour pick and copy-and-stamp. Each tool has a key: B L R E F G T K C."),
+         tut_step(WS_BITMAPS, "bm_pal", "Colours", "Left-click a colour for the pen, right-click for the second colour."),
+         tut_step(WS_BITMAPS, "bm_scr_pic_title", "Where they show", "Choose which bitmap is the title screen, the loading screen, game over and you win. The loading screen goes on a .d64 disk with a small loader, so it costs no game memory."),
++        tut_step(WS_UI, "", "UI", "Your own HUD: a panel at the top or bottom of the screen with a frame, a font and the score, lives and more placed where you want them."),
++        tut_step(WS_UI, "hud_on", "Switch it on", "Use a custom HUD starts you off with a framed panel and fields like the standard score line."),
++        tut_step(WS_UI, "hud_preview", "Move things", "Drag a field on the preview to move it - it snaps to the 8 x 8 character grid, as the C64 draws letters in character squares."),
++        tut_step(WS_UI, "hud_frame_canvas", "Draw the frame", "The 3 x 3 characters are the corners, the edges that repeat along the panel and the fill. Each character has one colour, just like on the C64."),
++        tut_step(WS_UI, "hud_add", "Fields", "Add text, the score, lives - and in a map game the level goal and the level number. Pick one to change its label, place, colour and digits on the right."),
+         tut_step(WS_ANIMATE, "", "Animate", "Animations for your cast, played by a small routine in the game that watches which way each sprite moves. Pick someone on the left."),
+         tut_step(WS_ANIMATE, "anim_mid_0", "The joystick", "The middle plays while it stands still, the 8 slots round it while it moves that way. Leave directions empty and they borrow from Walk or from each other."),
+         tut_step(WS_ANIMATE, "anim_bank_0", "Pick the frames", "Click a frame slot, then sprites in the bank - each click adds a frame. Double-click a sprite to draw it."),
+diff --git a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+new file mode 100644
+index 0000000..9416d73
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+@@ -0,0 +1,419 @@
++/// C64 NO-CODE STUDIO - the UI page (ported from ADAM's UI page): design your own HUD.
++/// Left: switch it on, where it goes, its height, the frame and font styles, and the fields.
++/// Centre: the game screen with the HUD (drag a field to move it), then the frame or font editor.
++/// Right: the picked field. The model, the preview and the 6502 side are in scr_hud.
++
++function ws_hud_draw(_x1, _y1, _x2, _y2)
++{
++    var _lw = 280;
++    var _rw = 300;
++    var _p = proj;
++    var _u = _p.hud;
++    var _cx1 = _x1 + _lw + 12;
++    var _cx2 = _x2 - _rw - 12;
++    var _nf = array_length(_u.fields);
++    hud_sel = clamp(hud_sel, 0, max(0, _nf - 1));
++    // coming back to the page: the Charset page may have changed the letters
++    if (hud_away) { hud_sheet_tick += 1; hud_away = false; }
++
++    // ---------------- left: on, where, the frame, the font, the fields ----------------
++    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Custom HUD");
++    var _fx = _x1 + 16;
++    var _fw = _lw - 32;
++    var _y = _y1 + 52;
++    var _on = ui_toggle("hud_on", _fx, _y, "Use a custom HUD", _u.on, "Custom HUD|Replaces the standard score line with your own panel, font and fields. Switch it off to go back to the standard one (your design is kept).");
++    if (_on != _u.on)
++    {
++        undo_mark("hudon" + string(current_time));
++        if (_on) { hud_switch_on(_p); }
++        else { _u.on = false; }
++        _nf = array_length(_u.fields);
++    }
++    _y += 36;
++    var _half = floor((_fw - 8) / 2);
++    var _rmax = hud_rows_max(_p);
++    ui_heading(_fx, _y, "Where");
++    ui_heading(_fx + _half + 8, _y, "Height (rows)");
++    if (_p.game_type == 1)
++    {
++        ui_text(_fx + 4, _y + 33, "Top", global.TH.text_dim, fa_left, fa_middle, global.f_body, 1);
++        ui_register("hud_pos", _fx, _y + 18, _fx + _half, _y + 48, "Where|A map game's HUD sits above the scrolling window. How many rows it has room for is set by the window's top on the World page.");
++    }
++    else
++    {
++        var _pos = _u.bottom ? 1 : 0;
++        var _np = ui_dropdown("hud_pos", _fx, _y + 18, _half, 30, ["Top", "Bottom"], _pos, "Where|The panel's place on the screen. It covers those rows of the Screen page.");
++        if (_np != _pos) { set_val(_u, "bottom", (_np == 1), "hudpos"); }
++    }
++    set_val(_u, "rows", ui_stepper("hud_rows", _fx + _half + 8, _y + 18, _half, clamp(_u.rows, 1, _rmax), 1, _rmax, "Height|Text rows of 8 lines: 1 is a slim strip, 3 a frame round one line of text. Fields on rows below the panel are not shown."), "hudrows");
++    _y += 58;
++    if (_p.game_type == 1) { ui_text(_fx, _y - 4, "Room for " + string(_rmax) + " rows above the window", global.TH.text_faint, fa_left, fa_top, global.f_small, 1); _y += 18; }
++    set_val(_u, "frame_on", ui_toggle("hud_frame_on", _fx, _y, "Panel frame", _u.frame_on, "Panel frame|Draws the 9-slice frame: 9 characters for the corners, the edges (repeated along the panel) and the fill. Off: the screen shows behind the text."), "hudframeon");
++    _y += 32;
++    ui_heading(_fx, _y, "Frame style");
++    var _styles = hud_frame_styles();
++    var _si = -1;
++    for (var s = 0; s < array_length(_styles); s++)
++    {
++        if (_styles[s] == _u.style) { _si = s; }
++    }
++    var _snames = [];
++    for (var s2 = 0; s2 < array_length(_styles); s2++) { array_push(_snames, _styles[s2]); }
++    var _shown = _si;
++    if (_si < 0)
++    {
++        array_push(_snames, "Custom (drawn)");
++        _shown = array_length(_snames) - 1;
++    }
++    var _ns = ui_dropdown("hud_style", _fx, _y + 18, _fw, 30, _snames, _shown, "Frame style|A ready-made frame. Then draw on it under the preview to make it your own.");
++    if (_ns != _shown && _ns < array_length(_styles))
++    {
++        undo_mark("hudstyle" + string(current_time));
++        hud_apply_preset(_u, _styles[_ns]);
++    }
++    _y += 58;
++    ui_heading(_fx, _y, "Font");
++    var _nfs = ui_dropdown("hud_font", _fx, _y + 18, _fw, 30, hud_font_styles(), _u.font_style, "Font|The letters and digits of the HUD - and of the whole game, as the C64 has one set of letters on the screen. Custom: draw your own under the preview.");
++    if (_nfs != _u.font_style)
++    {
++        undo_mark("hudfont" + string(current_time));
++        if (_nfs == 5 && array_length(_u.font) != 512) { _u.font = hud_font_bytes(_p, _u); }
++        _u.font_style = _nfs;
++        if (_nfs == 5) { hud_edit_tab = 1; }
++    }
++    _y += 58;
++    ui_heading(_fx, _y, "Fields (" + string(_nf) + ")");
++    _y += 18;
++    var _types = hud_field_types();
++    var _listh = max(60, _y2 - 64 - _y);
++    var _rowh = 30;
++    var _content = _nf * _rowh + 4;
++    var _off = ui_scroll_begin("hud_fields", _fx - 4, _y, _fx + _fw + 4, _y + _listh, _content);
++    for (var f = 0; f < _nf; f++)
++    {
++        var _fy = _y + f * _rowh - _off;
++        if (_fy < _y - _rowh || _fy > _y + _listh) { continue; }
++        var _fd = _u.fields[f];
++        var _hot = ui_register("hud_field_" + string(f), _fx, _fy, _fx + _fw, _fy + _rowh - 4, "Field|Click to change it on the right, or drag it on the preview.");
++        if (hud_sel == f) { ui_rrect(_fx, _fy, _fx + _fw, _fy + _rowh - 4, 6, global.TH.accent, global.TH.accent_dark, 0.9); }
++        else if (_hot) { ui_rrect(_fx, _fy, _fx + _fw, _fy + _rowh - 4, 6, global.TH.btn_hot_top, global.TH.btn_hot_bot, 0.6); }
++        ui_rrect(_fx + 6, _fy + 6, _fx + 20, _fy + _rowh - 10, 3, c64col(_fd.colour), c64col(_fd.colour), 1);
++        var _ft = _types[_fd.type];
++        if (_fd.label != "") { _ft += ": " + _fd.label; }
++        ui_text(_fx + 28, _fy + (_rowh - 4) / 2, ui_text_fit(_ft, global.f_small, _fw - 36), global.TH.text, fa_left, fa_middle, global.f_small, 1);
++        if (_hot && ui_pressed)
++        {
++            ui_take_click();
++            hud_sel = f;
++        }
++    }
++    ui_scroll_end("hud_fields", _fx - 4, _y, _fx + _fw + 4, _y + _listh, _content);
++    var _addn = ["+ Field"];
++    for (var t = 0; t < hud_type_count(_p); t++) { array_push(_addn, _types[t]); }
++    var _bw = floor((_fw - 8) / 2);
++    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal and the level number.");
++    if (_add > 0 && _nf < HUD_FIELDS_MAX && _u.on)
++    {
++        undo_mark("hudadd" + string(current_time));
++        var _nfd = hud_field_new(_add - 1);
++        _nfd.colour = 1;
++        _nfd.row = hud_text_row(_p);
++        switch (_add - 1)
++        {
++            case 0: _nfd.label = "TEXT"; break;
++            case 1: _nfd.label = "SCORE "; _nfd.digits = (_p.game_type == 1) ? 6 : 4; break;
++            case 2: _nfd.label = "LIVES "; _nfd.digits = 1; break;
++            case 3: _nfd.label = "GEMS "; break;
++            case 4: _nfd.label = "LEVEL "; _nfd.digits = 1; break;
++        }
++        array_push(_u.fields, _nfd);
++        hud_sel = array_length(_u.fields) - 1;
++    }
++    var _dst = (_nf == 0) ? BTN_GHOST : BTN_DANGER;
++    if (ui_button("hud_del", _fx + _bw + 8, _y2 - 48, _fw - _bw - 8, 32, "Remove", "Remove field|Takes the picked field off the HUD. You can Undo this.", _dst) && _nf > 0)
++    {
++        undo_mark("huddel" + string(current_time));
++        array_delete(_u.fields, hud_sel, 1);
++        hud_sel = max(0, hud_sel - 1);
++    }
++    _nf = array_length(_u.fields);
++    hud_sel = clamp(hud_sel, 0, max(0, _nf - 1));
++
++    // ---------------- centre: the preview, then the frame / font editor ----------------
++    ui_panel(_cx1, _y1, _cx2, _y2, "Preview");
++    var _pw = _cx2 - _cx1 - 32;
++    var _ph = floor((_y2 - _y1) * 0.56);
++    var _sc = max(1, floor(min(_pw / 320, (_ph - 10) / 200) * 2) / 2);
++    var _vx = floor((_cx1 + _cx2 - 320 * _sc) / 2);
++    var _vy = _y1 + 50;
++    var _bc = (_p.game_type == 1) ? _p.eng.border : _p.border;
++    ui_rrect(_vx - 10, _vy - 10, _vx + 320 * _sc + 10, _vy + 200 * _sc + 10, 8, c64col(_bc), c64col(_bc), 1);
++    hud_preview_draw(_vx, _vy, _sc);
++    ui_register("hud_preview", _vx, _vy, _vx + 320 * _sc, _vy + 200 * _sc, "Preview|The game screen with your HUD, using sample numbers. Drag a field to move it (it snaps to the 8 x 8 character grid).");
++    var _rows = hud_rows(_p, _u);
++    var _r0 = hud_row0(_p, _u);
++    var _cs = 8 * _sc;
++    if (_u.on)
++    {
++        // the panel's outline, and the fields: click to pick, drag to move
++        draw_set_alpha(0.6);
++        draw_rectangle_colour(_vx - 1, _vy + _r0 * _cs - 1, _vx + 320 * _sc, _vy + (_r0 + _rows) * _cs, global.TH.accent2, global.TH.accent2, global.TH.accent2, global.TH.accent2, true);
++        draw_set_alpha(1);
++        var _hov = -1;
++        for (var f2 = 0; f2 < _nf; f2++)
++        {
++            var _fd2 = _u.fields[f2];
++            if (_fd2.row >= _rows) { continue; }
++            var _len = max(1, min(40 - _fd2.col, string_length(hud_field_text(_p, _fd2, true))));
++            var _rx1 = _vx + _fd2.col * _cs;
++            var _ry1 = _vy + (_r0 + _fd2.row) * _cs;
++            var _rx2 = _rx1 + _len * _cs;
++            var _ry2 = _ry1 + _cs;
++            if (point_in_rectangle(ui_mx, ui_my, _rx1, _ry1, _rx2, _ry2) && hud_drag < 0 && ui_can_input()) { _hov = f2; }
++            if (f2 == hud_sel) { draw_rectangle_colour(_rx1 - 2, _ry1 - 2, _rx2 + 1, _ry2 + 1, global.TH.accent, global.TH.accent, global.TH.accent, global.TH.accent, true); }
++            else if (f2 == _hov) { draw_rectangle_colour(_rx1 - 2, _ry1 - 2, _rx2 + 1, _ry2 + 1, c_white, c_white, c_white, c_white, true); }
++        }
++        if (_hov >= 0 && ui_pressed)
++        {
++            ui_take_click();
++            hud_sel = _hov;
++            hud_drag = _hov;
++            hud_drag_dx = ui_mx - (_vx + _u.fields[_hov].col * _cs);
++            hud_drag_dy = ui_my - (_vy + (_r0 + _u.fields[_hov].row) * _cs);
++            undo_mark("huddrag" + string(current_time));
++        }
++        if (hud_drag >= 0)
++        {
++            if (!ui_held || hud_drag >= _nf) { hud_drag = -1; }
++            else
++            {
++                var _df = _u.fields[hud_drag];
++                var _nc = clamp(round((ui_mx - hud_drag_dx - _vx) / _cs), 0, 39);
++                var _nr = clamp(round((ui_my - hud_drag_dy - _vy) / _cs) - _r0, 0, _rows - 1);
++                if (_nc != _df.col || _nr != _df.row)
++                {
++                    _df.col = _nc;
++                    _df.row = _nr;
++                    proj_dirty = true;
++                }
++            }
++        }
++    }
++
++    // the editors: the frame (24 x 24, 9 characters) or the font
++    var _ey = _vy + 200 * _sc + 22;
++    if (_u.on)
++    {
++        var _etabs = ["Panel frame", "Font"];
++        var _ehelp = ["Panel frame|Draw the frame: the 3 x 3 characters are the corners, the edges (repeated along the panel) and the fill (repeated inside). Each character has one colour, as on the C64.", "Font|Draw the letters: pick a character, then draw it. The first change makes the font Custom."];
++        for (var et = 0; et < 2; et++)
++        {
++            if (ui_tab("hud_etab_" + string(et), _cx1 + 16 + et * 130, _ey, 124, 30, _etabs[et], hud_edit_tab == et, _ehelp[et])) { hud_edit_tab = et; }
++        }
++        var _cost = hud_bytes(_p);
++        ui_text(_cx2 - 16, _ey + 15, "About " + string(_cost) + " bytes in the game", global.TH.text_faint, fa_right, fa_middle, global.f_small, 1);
++        _ey += 40;
++        if (hud_edit_tab == 0) { hud_frame_editor(_cx1 + 16, _ey, _cx2 - 16, _y2 - 14); }
++        else { hud_font_editor(_cx1 + 16, _ey, _cx2 - 16, _y2 - 14); }
++    }
++    else
++    {
++        ui_text_wrap(_cx1 + 16, _ey, "The standard HUD is in use: one line with the score and lives. Switch on 'Use a custom HUD' to design a panel with a frame, a font and fields of your own.", global.TH.text_dim, _cx2 - _cx1 - 32, global.f_body, 1);
++    }
++
++    // ---------------- right: the picked field ----------------
++    var _rx = _x2 - _rw;
++    ui_panel(_rx, _y1, _x2, _y2, "Field");
++    var _gx = _rx + 20;
++    var _gw = _rw - 40;
++    var _gy = _y1 + 56;
++    if (!_u.on || _nf == 0)
++    {
++        var _msg = (!_u.on) ? "Switch on 'Use a custom HUD' on the left to design your own." : "Add a field on the left.";
++        ui_text_wrap(_gx, _gy, _msg, global.TH.text_dim, _gw, global.f_body, 1);
++        return;
++    }
++    var _sf = _u.fields[hud_sel];
++    var _tn = [];
++    for (var t2 = 0; t2 < hud_type_count(_p); t2++) { array_push(_tn, _types[t2]); }
++    var _ti = _sf.type;
++    if (_ti >= array_length(_tn)) { array_push(_tn, _types[_ti] + " (map games)"); _ti = array_length(_tn) - 1; }
++    ui_heading(_gx, _gy, "Shows");
++    var _nt = ui_dropdown("hud_ftype", _gx, _gy + 18, _gw, 30, _tn, _ti, "Shows|Text: just the label. Score, Lives, Level: the label then the number. Goal: the label and 'got / needed' for the level's goal (map games).");
++    if (_nt != _ti && _nt < hud_type_count(_p)) { set_val(_sf, "type", _nt, "hudftype"); }
++    _gy += 58;
++    ui_heading(_gx, _gy, "Label (up to " + string(HUD_LABEL_MAX) + " letters)");
++    // each field has its own label box: picking another field drops the typing in the old one
++    var _lid = "hud_flabel" + string(hud_sel);
++    if (string_pos("hud_flabel", ui_focus) == 1 && ui_focus != _lid) { ui_focus = ""; }
++    var _nl = ui_textfield(_lid, _gx, _gy + 18, _gw, 32, _sf.label, HUD_LABEL_MAX, "Label|Drawn before the number, e.g. 'SCORE ' (end it with a space). For Text it is the whole text.");
++    set_val(_sf, "label", string_upper(_nl), "hudflabel" + string(hud_sel));
++    _gy += 62;
++    var _gh = floor((_gw - 10) / 2);
++    ui_heading(_gx, _gy, "Column (0-39)");
++    ui_heading(_gx + _gh + 10, _gy, "Row (0-" + string(_rows - 1) + ")");
++    set_val(_sf, "col", ui_stepper("hud_fcol", _gx, _gy + 18, _gh, _sf.col, 0, 39, "Column|Where the field starts across the screen, in characters (or drag it on the preview)."), "hudfcol");
++    set_val(_sf, "row", ui_stepper("hud_frow", _gx + _gh + 10, _gy + 18, _gh, min(_sf.row, _rows - 1), 0, _rows - 1, "Row|Which text row of the panel."), "hudfrow");
++    _gy += 58;
++    ui_heading(_gx, _gy, "Colour");
++    set_val(_sf, "colour", ui_colour_drop("hud_fcolour", _gx, _gy + 18, _gw, 30, _sf.colour, "Colour|The letters' colour. Each character square on the C64 has one colour, on the screen's background colour."), "hudfcolour");
++    _gy += 58;
++    if (_sf.type == 1 || _sf.type == 2 || _sf.type == 4)
++    {
++        var _dmax = (_sf.type == 4) ? 2 : 6;
++        ui_heading(_gx, _gy, "Digits");
++        set_val(_sf, "digits", ui_stepper("hud_fdig", _gx, _gy + 18, _gh, clamp(_sf.digits, 1, _dmax), 1, _dmax, "Digits|How many digits the number has, with zeros in front. A single-screen game's score goes up to 9999, a map game's to 999999."), "hudfdig");
++        _gy += 58;
++    }
++    ui_text_wrap(_gx, _gy + 8, "Shows: " + hud_field_text(_p, _sf, true), global.TH.text_faint, _gw, global.f_small, 1);
++    var _wl = hud_warnings(_p);
++    if (array_length(_wl) > 0) { ui_text_wrap(_gx, _gy + 40, _wl[0], global.TH.warn, _gw, global.f_small, 1); }
++}
++
++/// The 24 x 24 frame, magnified, with the 9 characters marked, and the colours to draw with
++function hud_frame_editor(_x1, _y1, _x2, _y2)
++{
++    var _u = proj.hud;
++    var _ps = max(3, floor(min((_x2 - _x1) * 0.5, _y2 - _y1 - 6) / 24));
++    var _gx = _x1;
++    var _gy = _y1;
++    var _gw = _ps * 24;
++    var _bgc = (proj.game_type == 1) ? proj.eng.bg : proj.background;
++    ui_rrect(_gx - 4, _gy - 4, _gx + _gw + 4, _gy + _gw + 4, 6, c64col(_bgc), c64col(_bgc), 1);
++    for (var _py = 0; _py < 24; _py++)
++    {
++        for (var _px = 0; _px < 24; _px++)
++        {
++            if (_u.frame[_py * 24 + _px] == 0) { continue; }
++            var _c = c64col(_u.fcols[(_py div 8) * 3 + (_px div 8)]);
++            draw_rectangle_colour(_gx + _px * _ps, _gy + _py * _ps, _gx + (_px + 1) * _ps - 1, _gy + (_py + 1) * _ps - 1, _c, _c, _c, _c, false);
++        }
++    }
++    draw_set_alpha(0.5);
++    for (var l = 1; l < 3; l++)
++    {
++        draw_line_colour(_gx + l * 8 * _ps, _gy, _gx + l * 8 * _ps, _gy + _gw, c_white, c_white);
++        draw_line_colour(_gx, _gy + l * 8 * _ps, _gx + _gw, _gy + l * 8 * _ps, c_white, c_white);
++    }
++    draw_set_alpha(1);
++    var _hot = ui_register("hud_frame_canvas", _gx, _gy, _gx + _gw - 1, _gy + _gw - 1, "Frame|Left-click draws with the colour picked - the whole character takes that colour, as on the C64. Right-click rubs out. Corners stay put; the edges repeat along the panel and the fill repeats inside.");
++    if (_hot)
++    {
++        var _hx = clamp(floor((ui_mx - _gx) / _ps), 0, 23);
++        var _hy = clamp(floor((ui_my - _gy) / _ps), 0, 23);
++        draw_rectangle_colour(_gx + _hx * _ps, _gy + _hy * _ps, _gx + (_hx + 1) * _ps - 1, _gy + (_hy + 1) * _ps - 1, c_white, c_white, c_white, c_white, true);
++        if (ui_pressed || ui_rpressed)
++        {
++            ui_take_click();
++            undo_mark("hudframe" + string(current_time));
++            hud_drawing = true;
++        }
++        if (hud_drawing)
++        {
++            var _k = _hy * 24 + _hx;
++            var _sl = (_hy div 8) * 3 + (_hx div 8);
++            if (ui_held && (_u.frame[_k] != 1 || _u.fcols[_sl] != hud_pen))
++            {
++                _u.frame[_k] = 1;
++                _u.fcols[_sl] = hud_pen;
++                _u.style = "Custom";
++                proj_dirty = true;
++            }
++            if (ui_rheld && _u.frame[_k] != 0)
++            {
++                _u.frame[_k] = 0;
++                _u.style = "Custom";
++                proj_dirty = true;
++            }
++        }
++    }
++    if (!ui_held && !ui_rheld) { hud_drawing = false; }
++    var _px2 = _gx + _gw + 24;
++    var _cw = max(14, min(24, floor((_x2 - _px2 - 28) / 8)));
++    ui_heading(_px2, _y1, "Colour: " + global.C64PAL_NAMES[hud_pen]);
++    hud_pen = ui_colour_grid("hud_pal", _px2, _y1 + 20, _cw, hud_pen, "Colour|The colour to draw with.");
++    var _ty = _y1 + 20 + 2 * (_cw + 4) + 12;
++    if (ui_button("hud_fclear", _px2, _ty, 120, 30, "Clear", "Clear|Rubs the whole frame out, to draw one from nothing.", BTN_GHOST))
++    {
++        undo_mark("hudfclear" + string(current_time));
++        _u.frame = array_create(576, 0);
++        _u.style = "Custom";
++    }
++    ui_text_wrap(_px2, _ty + 42, "Letters sit on the screen's background colour, so an empty fill reads best.", global.TH.text_faint, max(60, _x2 - _px2), global.f_small, 1);
++}
++
++/// The font: a grid of the 64 characters, and the picked one magnified to draw on
++function hud_font_editor(_x1, _y1, _x2, _y2)
++{
++    var _u = proj.hud;
++    var _font = hud_font_bytes(proj, _u);
++    var _cs = max(14, min(26, floor((_x2 - _x1) * 0.55 / 16), floor((_y2 - _y1) / 4) - 2));
++    for (var c = 0; c < 64; c++)
++    {
++        var _cx = _x1 + (c mod 16) * (_cs + 2);
++        var _cy = _y1 + (c div 16) * (_cs + 2);
++        var _hot = ui_register("hud_char_" + string(c), _cx, _cy, _cx + _cs, _cy + _cs, "Character|Click to draw it on the right.");
++        var _bg = make_colour_rgb(22, 24, 30);
++        if (c == hud_font_char) { _bg = global.TH.accent_dark; }
++        else if (_hot) { _bg = make_colour_rgb(44, 48, 58); }
++        draw_rectangle_colour(_cx, _cy, _cx + _cs - 1, _cy + _cs - 1, _bg, _bg, _bg, _bg, false);
++        var _pp = (_cs - 4) / 8;
++        var _ox = _cx + 2;
++        var _oy = _cy + 2;
++        for (var i = 0; i < 8; i++)
++        {
++            var _row = _font[c * 8 + i];
++            if (_row == 0) { continue; }
++            for (var b = 0; b < 8; b++)
++            {
++                if ((_row & (0x80 >> b)) != 0) { px_rect(_ox + b * _pp, _oy + i * _pp, _pp, _pp, c_white); }
++            }
++        }
++        if (_hot && ui_pressed)
++        {
++            ui_take_click();
++            hud_font_char = c;
++        }
++    }
++    var _ex = _x1 + 16 * (_cs + 2) + 24;
++    var _ps = max(6, floor(min(_x2 - _ex, _y2 - _y1 - 40) / 8));
++    ui_rrect(_ex - 4, _y1 - 4, _ex + 8 * _ps + 4, _y1 + 8 * _ps + 4, 6, make_colour_rgb(22, 24, 30), make_colour_rgb(22, 24, 30), 1);
++    for (var i2 = 0; i2 < 8; i2++)
++    {
++        for (var b2 = 0; b2 < 8; b2++)
++        {
++            var _set = ((_font[hud_font_char * 8 + i2] & (0x80 >> b2)) != 0);
++            var _col = _set ? c_white : make_colour_rgb(40, 44, 54);
++            draw_rectangle_colour(_ex + b2 * _ps + 1, _y1 + i2 * _ps + 1, _ex + (b2 + 1) * _ps - 1, _y1 + (i2 + 1) * _ps - 1, _col, _col, _col, _col, false);
++        }
++    }
++    var _cn = "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[£]^< !\"#$%&'()*+,-./0123456789:;<=>?";
++    ui_text_wrap(_ex, _y1 + 8 * _ps + 10, "'" + string_char_at(_cn, hud_font_char + 1) + "' - left-click draws, right-click rubs out", global.TH.text_dim, max(60, _x2 - _ex), global.f_small, 1);
++    var _hot2 = ui_register("hud_font_canvas", _ex, _y1, _ex + 8 * _ps - 1, _y1 + 8 * _ps - 1, "Character|Left-click sets a pixel, right-click clears it. The first change makes the font Custom (starting from the style you had).");
++    if (_hot2)
++    {
++        var _hb = clamp(floor((ui_mx - _ex) / _ps), 0, 7);
++        var _hr = clamp(floor((ui_my - _y1) / _ps), 0, 7);
++        if (ui_pressed || ui_rpressed)
++        {
++            ui_take_click();
++            undo_mark("hudfontdraw" + string(current_time));
++            if (_u.font_style != 5)
++            {
++                _u.font = hud_font_bytes(proj, _u);
++                _u.font_style = 5;
++            }
++            hud_drawing = true;
++        }
++        if (hud_drawing && _u.font_style == 5)
++        {
++            var _k = hud_font_char * 8 + _hr;
++            var _m = 0x80 >> _hb;
++            var _old = _u.font[_k];
++            if (ui_held) { _u.font[_k] = _old | _m; }
++            if (ui_rheld) { _u.font[_k] = _old & ~_m & 255; }
++            if (_u.font[_k] != _old) { proj_dirty = true; }
++        }
++    }
++    if (!ui_held && !ui_rheld) { hud_drawing = false; }
++}
+diff --git a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.yy b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.yy
+new file mode 100644
+index 0000000..54f06a2
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_ws_hud",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_ws_hud",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index e7043eb..c7f7a3e 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -10,7 +10,8 @@
+ #macro WS_MUSIC 13
+ #macro WS_ANIMATE 14
+ #macro WS_BITMAPS 15
+-#macro WS_COUNT 16
++#macro WS_UI 16
++#macro WS_COUNT 17
+ 
+ function ws_set(_i)
+ {
+@@ -275,14 +276,14 @@ function ws_tabs()
+ {
+     if (proj.game_type == 1)
+     {
+-        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_BITMAPS, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_BUILD];
++        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_BITMAPS, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
+     }
+-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
++    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
+ }
+ 
+ function ws_name(_w)
+ {
+-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps"];
++    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps", "UI"];
+     return _n[_w];
+ }
+ 
+@@ -304,7 +305,8 @@ function ws_help(_w)
+         "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot.",
+         "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play.",
+         "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left.",
+-        "Bitmaps|Paint full-screen C64 bitmaps in multicolour or hi-res, or import PNG, JPG and Koala pictures, and show them as the title screen, the loading screen, the game over and winning screens, before a level or from a rule. Each takes about 10 KB of the game."
++        "Bitmaps|Paint full-screen C64 bitmaps in multicolour or hi-res, or import PNG, JPG and Koala pictures, and show them as the title screen, the loading screen, the game over and winning screens, before a level or from a rule. Each takes about 10 KB of the game.",
++        "UI|Design your own HUD: a panel at the top or bottom with a frame of 9 characters, a font style or letters you draw, and the score, lives, goal and level placed where you want them."
+     ];
+     return _h[_w];
+ }
