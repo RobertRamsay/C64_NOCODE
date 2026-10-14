@@ -240,7 +240,7 @@ function shortcuts_step()
         if (tut_active) { tut_active = false; }
         else { tut_start(ws); }
     }
-    if (!tut_active && !_ctrl && ws != WS_SCREEN)
+    if (!tut_active && !_ctrl && ws != WS_SCREEN && !(ws == WS_MUSIC && mus_ed_keys_hover))
     {
         var _tabs = ws_tabs();
         for (var i = 0; i < min(9, array_length(_tabs)); i++)

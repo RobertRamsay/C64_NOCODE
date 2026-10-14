@@ -710,6 +710,7 @@ function music_mod_chunks(_song)
 function music_mod_fx_out(_lp, _st, _p, _m, _speed)
 {
     var _fx = _lp.fx[_st];
+    if (_fx == 5) { return [12, clamp(round(_lp.fxp[_st] * 64 / 15), 0, 64)]; }      // volume (sustain level)
     var _fp = max(1, _lp.fxp[_st]);
     if (_fx == 0) { return [0, 0]; }
     var _per = mod_note_to_period(_m);
@@ -717,7 +718,12 @@ function music_mod_fx_out(_lp, _st, _p, _m, _speed)
     var _tick = _speed / max(1, _speed - 1);        // MOD slides skip each row's first tick
     if (_fx == 1) { return [1, clamp(round(_per * _fp * 8 / _f * _tick), 1, 255)]; }
     if (_fx == 2) { return [2, clamp(round(_per * _fp * 8 / _f * _tick), 1, 255)]; }
-    if (_fx == 3) { return [4, 0x40 | clamp(round(_per * _fp * 8 / _f / 2), 1, 15)]; }
+    if (_fx == 3)
+    {
+        // vibrato: a 16-step cycle advanced by the speed each frame = MOD speed x 4 of 64 per tick
+        var _inc = (_fp >> 6) + 1;
+        return [4, (clamp(_inc * 4, 1, 15) << 4) | clamp(round(_per * (_fp & 63) * 8 / _f / 2), 1, 15)];
+    }
     return [3, clamp(round(_per * _fp * 16 / _f * _tick), 1, 255)];
 }
 
@@ -805,6 +811,17 @@ function music_mod_export(_song)
                 if (_li2 < 0 || _li2 >= array_length(_arr.loops)) { continue; }
                 var _lp2 = _arr.loops[_li2];
                 var _drum2 = (_lp2.cat == 0);
+                var _snd_m = array_create(MUS_STEPS, 0);
+                var _snd_p = array_create(MUS_STEPS, 0);
+                var _snd_fix = array_create(MUS_STEPS, true);
+                var _arrive = array_create(MUS_STEPS, false);
+                if (!_drum2)
+                {
+                    for (var g0 = 0; g0 < MUS_STEPS; g0++)
+                    {
+                        if (music_glide_valid(_lp2, g0)) { _arrive[_lp2.glide_to[g0]] = true; }
+                    }
+                }
                 for (var s = 0; s < MUS_STEPS; s++)
                 {
                     var _nt = _lp2.notes[s];
@@ -833,19 +850,24 @@ function music_mod_export(_song)
                     var _cell = _pat[_row][lane];
                     _cell.note = _m;
                     _cell.sample = _e3.smp;
-                    // chord or effect, on every row the note is held (a MOD effect lasts one row)
-                    var _fx = [0, 0];
-                    if (_e3.ins.fix == 0) { _fx = music_mod_fx_out(_lp2, s, _p2, _m, _speed); }
-                    if (_fx[0] == 0 && _lp2.arps[s] != 0 && _e3.ins.fix == 0) { _fx = [0, _lp2.arps[s]]; }
-                    else if (_fx[0] != 0 && _lp2.arps[s] != 0) { mod_warn(_warn, "A MOD row has one effect: notes with a chord and an effect kept the effect."); }
-                    if (_fx[0] != 0 || _fx[1] != 0)
+                    // a chord, on every row the note is held (a MOD effect lasts one row)
+                    if (_lp2.arps[s] != 0 && _e3.ins.fix == 0)
                     {
                         for (var r = _row; r < _row + _len; r++)
                         {
-                            _pat[r][lane].effect = _fx[0];
-                            _pat[r][lane].param = _fx[1];
+                            _pat[r][lane].effect = 0;
+                            _pat[r][lane].param = _lp2.arps[s];
                         }
                     }
+                    // the note sounding on each step, for the effects
+                    for (var t2 = s; t2 < s + _len; t2++)
+                    {
+                        _snd_m[t2] = _m;
+                        _snd_p[t2] = _p2;
+                        _snd_fix[t2] = (_e3.ins.fix != 0);
+                    }
+                    // a linked bend arrives: the note glides in (3xx) without starting again
+                    if (_arrive[s]) { _cell.effect = 3; _cell.param = 255; }
                     // swing: the 2nd and 3rd 32nd of each 16th pair start late
                     if (_song.swing > 0 && (s mod 4 == 1 || s mod 4 == 2) && _cell.effect == 0 && _cell.param == 0)
                     {
@@ -854,6 +876,38 @@ function music_mod_export(_song)
                     }
                     // the gate goes off: volume 0 on the row after (unless a note is there)
                     if (_row + _len < _nb * MUS_STEPS) { array_push(_ends, [_row + _len, lane]); }
+                }
+                // effects: on every step they last, at the pitch sounding there
+                for (var t3 = 0; t3 < MUS_STEPS; t3++)
+                {
+                    var _src = music_fx_active_step(_lp2, t3);
+                    if (_src < 0 || _snd_m[t3] == 0 || _snd_fix[t3]) { continue; }
+                    var _fo = music_mod_fx_out(_lp2, _src, _snd_p[t3], _snd_m[t3], _speed);
+                    var _fc = _pat[bb * MUS_STEPS + t3][lane];
+                    if (_fc.effect == 14 || _fc.effect == 3) { continue; }
+                    if (_fc.effect == 0 && _fc.param != 0) { mod_warn(_warn, "A MOD row has one effect: steps with a chord and an effect kept the effect."); }
+                    _fc.effect = _fo[0];
+                    _fc.param = _fo[1];
+                }
+                // linked bends: period slides on the rows up to the target (as ADAM writes them)
+                for (var g1 = 0; g1 < MUS_STEPS; g1++)
+                {
+                    if (_drum2 || !music_glide_valid(_lp2, g1) || _snd_m[g1] == 0 || _snd_fix[g1]) { continue; }
+                    var _gt = _lp2.glide_to[g1];
+                    if (_snd_m[_gt] == 0) { continue; }
+                    var _delta = mod_note_to_period(_snd_m[_gt]) - mod_note_to_period(_snd_m[g1]);
+                    var _units = round(abs(_delta) / max(1, _speed - 1));
+                    var _span = _gt - g1;
+                    for (var r2 = g1; r2 < _gt; r2++)
+                    {
+                        var _bc = _pat[bb * MUS_STEPS + r2][lane];
+                        if (_bc.effect == 14) { continue; }
+                        var _pa = floor(_units * (r2 - g1 + 1) / _span) - floor(_units * (r2 - g1) / _span);
+                        _bc.effect = 2;
+                        if (_delta < 0) { _bc.effect = 1; }
+                        _bc.param = clamp(_pa, 0, 255);
+                        if (_bc.param == 0) { _bc.effect = 0; }
+                    }
                 }
             }
         }
@@ -957,7 +1011,12 @@ function music_mod_fx_in(_eff, _par, _m, _speed, _ofs)
     if (_eff == 1 && _par > 0) { return [1, clamp(round(_par * _tick * _f / (_per * 8)), 1, 255)]; }
     if (_eff == 2 && _par > 0) { return [2, clamp(round(_par * _tick * _f / (_per * 8)), 1, 255)]; }
     if (_eff == 3 || _eff == 5) { return [4, clamp(round(max(1, _par) * _tick * _f / (_per * 16)), 1, 255)]; }
-    if (_eff == 4 || _eff == 6) { return [3, clamp(round(max(1, _par & 15) * 2 * _f / (_per * 8)), 1, 255)]; }
+    if (_eff == 4 || _eff == 6)
+    {
+        var _sp = clamp(round((_par >> 4) / 4), 1, 4);
+        return [3, ((_sp - 1) << 6) | clamp(round(max(1, _par & 15) * 2 * _f / (_per * 8)), 1, 63)];
+    }
+    if (_eff == 12) { return [5, clamp(round(min(_par, 64) * 15 / 64), 0, 15)]; }
     return [0, 0];
 }
 
@@ -1205,6 +1264,7 @@ function music_mod_import(_ms, _name)
                     _lp = loop_new(string_copy(_sn, 1, 16), _cat, _best_id);
                     _tr = music_inst_compiled(_best_id, false).tr;
                 }
+                var _bend_to = [];
                 for (var e2 = 0; e2 < array_length(_ev); e2++)
                 {
                     var _x = _ev[e2];
@@ -1226,6 +1286,12 @@ function music_mod_import(_ms, _name)
                     }
                     _lp.lengths[_st] = clamp((_x.end_row - _x.row) * _spr, 1, MUS_STEPS - _st);
                     if (_mi2.drum) { continue; }
+                    // a note that ends a bend this studio saved (3FF on its own row): a linked bend
+                    if (_pat5[_x.row][_ch].effect == 3 && _pat5[_x.row][_ch].param == 255)
+                    {
+                        array_push(_bend_to, _st);
+                        continue;
+                    }
                     // the first chord or effect while the note is held
                     for (var r6 = _x.row; r6 < _x.end_row; r6++)
                     {
@@ -1238,14 +1304,40 @@ function music_mod_import(_ms, _name)
                         var _fi = music_mod_fx_in(_c7.effect, _c7.param, _x.m, _ticks, music_mod_ofs(_best_id));
                         if (_fi[0] != 0)
                         {
-                            _lp.fx[_st] = _fi[0];
-                            _lp.fxp[_st] = _fi[1];
+                            // on the step its row is, lasting as long as the rows repeat it
+                            var _es = _st + (r6 - _x.row) * _spr;
+                            if (_es >= MUS_STEPS) { break; }
+                            var _last = r6;
+                            while (_last + 1 < _x.end_row && _pat5[_last + 1][_ch].effect == _c7.effect && _pat5[_last + 1][_ch].param == _c7.param) { _last += 1; }
+                            _lp.fx[_es] = _fi[0];
+                            _lp.fxp[_es] = _fi[1];
+                            _lp.fx_end[_es] = clamp(_st + (_last - _x.row + 1) * _spr - 1, _es, MUS_STEPS - 1);
                             break;
                         }
                     }
                 }
+                // linked bends: from the note before, whose slides were the bend
+                for (var bt = 0; bt < array_length(_bend_to); bt++)
+                {
+                    var _to = _bend_to[bt];
+                    for (var bp = _to - 1; bp >= 0; bp--)
+                    {
+                        if (_lp.notes[bp] <= 0) { continue; }
+                        for (var bc = bp; bc < _to; bc++)
+                        {
+                            if (_lp.fx[bc] == 1 || _lp.fx[bc] == 2)
+                            {
+                                _lp.fx[bc] = 0;
+                                _lp.fxp[bc] = 0;
+                                _lp.fx_end[bc] = -1;
+                            }
+                        }
+                        music_glide_connect(_lp, bp, _to);
+                        break;
+                    }
+                }
                 // one copy of each different loop
-                var _key = string(_lp.cat) + "/" + string(_lp.inst) + "/" + json_stringify([_lp.notes, _lp.lengths, _lp.insts, _lp.arps, _lp.fx, _lp.fxp]);
+                var _key = string(_lp.cat) + "/" + string(_lp.inst) + "/" + json_stringify([_lp.notes, _lp.lengths, _lp.insts, _lp.arps, _lp.fx, _lp.fxp, _lp.fx_end, _lp.glide_to]);
                 var _li = _loop_keys[$ _key];
                 if (is_undefined(_li))
                 {

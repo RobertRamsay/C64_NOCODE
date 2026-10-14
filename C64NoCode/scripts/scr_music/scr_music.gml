@@ -6,7 +6,7 @@
 ///   bars  : song length in bars (1..MUS_BAR_MAX)
 ///   lanes : 3 arrays (one per SID voice) of MUS_BAR_MAX entries: an index into
 ///           arr.loops, or -1 for an empty bar
-///   loops : the song's 1-bar loops = { name, cat, lib, inst, notes, lengths, insts, arps, fx, fxp }
+///   loops : the song's 1-bar loops = { name, cat, lib, inst, notes, lengths, insts, arps, fx, fxp, fx_end, glide_to }
 ///           cat   : 0 drums, 1 bass, 2 chords, 3 lead, 4 fx
 ///           lib   : the library loop it was copied from, -1 = edited (Mine)
 ///           notes : 32 steps, 0 = none, 1..60 = C-1..B-5
@@ -14,7 +14,16 @@
 ///           insts : instrument per step (0.. built-in, 100+k = Sound page sound k)
 ///           arps  : chord per step, $xy = semitones of the 2nd and 3rd note (played as a
 ///                   per-frame arpeggio, the C64 way to play a chord on one voice)
-///           fx    : 0 none, 1 slide up, 2 slide down, 3 vibrato, 4 glide; fxp = its amount
+///           fx    : the effect row (ADAM's tracker effects, for the SID): 0 none, 1 slide up,
+///                   2 slide down, 3 vibrato, 4 glide (older loops), 5 volume (the voice's sustain
+///                   level); fxp = its amount (vibrato: speed - 1 in bits 6-7, depth in bits 0-5)
+///           fx_end: the last step the effect lasts (-1 = only its own step)
+///           glide_to: a linked bend from this note to a later one (-1 = none): the pitch slides
+///                   so it arrives on time, and the later note carries on without a new attack
+///
+/// Compiled events (MUS_EV_SIZE bytes): step, note, instrument (+128 = carry on without a new
+/// attack, 255 = only an effect), length, chord, effect, amount, effect length in steps
+/// (a bend - effect 6 - has its target note in the chord byte and its 16-bit rate in the last two).
 ///
 /// Timing: the driver runs once a frame. A step lasts song.speed frames (125 BPM at speed 3
 /// on PAL, 8 steps a beat); swing makes the first 16th of each pair longer and the second shorter.
@@ -31,7 +40,7 @@
 #macro MUS_NOTE_MAX 60
 #macro MUS_SOUND_MAX 94
 #macro MUS_LEVELS 8
-#macro MUS_EV_SIZE 7
+#macro MUS_EV_SIZE 8
 #macro MUS_ZP 253                 // $FD/$FE: the driver's pointer (free in both kinds of game)
 
 /// A built-in SID instrument. _fix > 0: a drum that always plays that pitch (frequency high byte).
@@ -49,7 +58,8 @@ function music_defs_init()
                            make_colour_rgb(88, 158, 240), make_colour_rgb(186, 120, 232), make_colour_rgb(200, 206, 214)];
     global.MUS_CHORD_NAMES = ["-", "Minor", "Major", "7th", "Sus 4", "Octave"];
     global.MUS_CHORD_CODES = [0, 0x37, 0x47, 0x4a, 0x57, 0xc0];
-    global.MUS_FX_NAMES = ["No effect", "Slide up", "Slide down", "Vibrato", "Glide from last note"];
+    global.MUS_FX_NAMES = ["No effect", "Slide up", "Slide down", "Vibrato", "Glide from last note", "Volume"];
+    global.MUS_FX_SHORT = ["--", "Up", "Down", "Vib", "Glide", "Vol"];
 
     // Built-in SID instruments: waveform, first-frame waveform, $D405 (AD), $D406 (SR),
     // pulse width, pulse sweep, pitch sweep per frame, drum pitch (0 = plays the note), transpose
@@ -138,7 +148,9 @@ function loop_new(_name, _cat, _inst)
         insts : array_create(MUS_STEPS, _inst),
         arps : array_create(MUS_STEPS, 0),
         fx : array_create(MUS_STEPS, 0),
-        fxp : array_create(MUS_STEPS, 0)
+        fxp : array_create(MUS_STEPS, 0),
+        fx_end : array_create(MUS_STEPS, -1),
+        glide_to : array_create(MUS_STEPS, -1)
     };
 }
 
@@ -180,6 +192,8 @@ function loop_copy(_l)
     array_copy(_c.arps, 0, _l.arps, 0, MUS_STEPS);
     array_copy(_c.fx, 0, _l.fx, 0, MUS_STEPS);
     array_copy(_c.fxp, 0, _l.fxp, 0, MUS_STEPS);
+    array_copy(_c.fx_end, 0, _l.fx_end, 0, MUS_STEPS);
+    array_copy(_c.glide_to, 0, _l.glide_to, 0, MUS_STEPS);
     return _c;
 }
 
@@ -255,7 +269,7 @@ function loop_from_loaded(_raw)
     if (is_numeric(_raw[$ "lib"])) { _l.lib = clamp(floor(_raw.lib), -1, array_length(global.MUS_LIB) - 1); }
     if (music_inst_valid(_raw[$ "inst"])) { _l.inst = floor(_raw.inst); }
     var _keys = ["notes", "lengths", "insts", "arps", "fx", "fxp"];
-    var _hi = [MUS_NOTE_MAX, MUS_STEPS, 999, 255, 4, 255];
+    var _hi = [MUS_NOTE_MAX, MUS_STEPS, 999, 255, 5, 255];
     for (var k = 0; k < array_length(_keys); k++)
     {
         var _a = _raw[$ _keys[k]];
@@ -271,7 +285,368 @@ function loop_from_loaded(_raw)
             else { _dst[s] = clamp(floor(_a[s]), 0, _hi[k]); }
         }
     }
+    var _ends = _raw[$ "fx_end"];
+    var _links = _raw[$ "glide_to"];
+    for (var s2 = 0; s2 < MUS_STEPS; s2++)
+    {
+        if (_l.fx[s2] == 5) { _l.fxp[s2] = min(_l.fxp[s2], 15); }
+        if (is_array(_ends))
+        {
+            if (s2 < array_length(_ends) && is_numeric(_ends[s2]) && _ends[s2] >= s2 && _ends[s2] < MUS_STEPS) { _l.fx_end[s2] = floor(_ends[s2]); }
+        }
+        else if (_l.fx[s2] > 0)
+        {
+            // older loops: an effect lasted until the next note, and vibrato had one amount
+            if (_l.fx[s2] == 3) { _l.fxp[s2] = clamp(_l.fxp[s2], 1, 63); }
+            var _e = MUS_STEPS - 1;
+            for (var t = s2 + 1; t < MUS_STEPS; t++)
+            {
+                if (_l.notes[t] > 0)
+                {
+                    _e = t - 1;
+                    break;
+                }
+            }
+            _l.fx_end[s2] = _e;
+        }
+        if (is_array(_links) && s2 < array_length(_links) && is_numeric(_links[s2]) && _links[s2] > s2 && _links[s2] < MUS_STEPS) { _l.glide_to[s2] = floor(_links[s2]); }
+    }
     return _l;
+}
+
+// ---------------------------------------------------------------------------
+// Effects and linked bends (ADAM's step editor)
+// ---------------------------------------------------------------------------
+
+/// The step whose effect is playing at step _step (an effect lasts from its step to fx_end), or -1
+function music_fx_active_step(_lp, _step)
+{
+    var _active = -1;
+    for (var _source = 0; _source <= _step; _source++)
+    {
+        if (_lp.fx[_source] > 0 && (_source == _step || _lp.fx_end[_source] >= _step)) { _active = _source; }
+    }
+    return _active;
+}
+
+/// The last step effect _src lasts
+function music_fx_last(_lp, _src)
+{
+    return max(_src, _lp.fx_end[_src]);
+}
+
+/// Click on the effect row: the next effect (an older glide moves on to volume)
+function music_fx_next_kind(_kind)
+{
+    if (_kind == 0) { return 1; }
+    if (_kind == 1) { return 2; }
+    if (_kind == 2) { return 3; }
+    if (_kind == 3 || _kind == 4) { return 5; }
+    return 0;
+}
+
+/// A new effect's amount: slides 8, vibrato speed 1 depth 8, volume full
+function music_fx_default(_kind)
+{
+    if (_kind == 3) { return 8; }
+    if (_kind == 5) { return 15; }
+    if (_kind == 0) { return 0; }
+    return 8;
+}
+
+function music_glide_valid(_lp, _source)
+{
+    var _target = _lp.glide_to[_source];
+    if (_target <= _source || _target >= MUS_STEPS || _lp.notes[_source] <= 0) { return false; }
+    return (_lp.notes[_target] > 0);
+}
+
+/// One SID voice bends one way at a time: links that would cross this one are taken away
+function music_glide_connect(_lp, _source, _target)
+{
+    for (var _other = 0; _other < MUS_STEPS; _other++)
+    {
+        if (music_glide_valid(_lp, _other) && _other < _target && _lp.glide_to[_other] > _source)
+        {
+            _lp.glide_to[_other] = -1;
+        }
+    }
+    _lp.glide_to[_source] = _target;
+}
+
+function music_glide_unlink(_lp, _step)
+{
+    _lp.glide_to[_step] = -1;
+    for (var _source = 0; _source < MUS_STEPS; _source++)
+    {
+        if (_lp.glide_to[_source] == _step) { _lp.glide_to[_source] = -1; }
+    }
+}
+
+/// Clears step _st of loop _lp (its note, chord, effect and links)
+function music_step_clear(_lp, _st)
+{
+    music_glide_unlink(_lp, _st);
+    _lp.notes[_st] = 0;
+    _lp.lengths[_st] = 0;
+    _lp.insts[_st] = _lp.inst;
+    _lp.arps[_st] = 0;
+    _lp.fx[_st] = 0;
+    _lp.fxp[_st] = 0;
+    _lp.fx_end[_st] = -1;
+}
+
+/// A linked note can't be moved past the note it links to (or from)
+function music_note_can_move(_lp, _from, _to)
+{
+    if (_from == _to) { return true; }
+    if (_lp.glide_to[_from] >= 0 && _to >= _lp.glide_to[_from]) { return false; }
+    for (var _source = 0; _source < MUS_STEPS; _source++)
+    {
+        if (_lp.glide_to[_source] == _from && _to <= _source) { return false; }
+    }
+    return true;
+}
+
+function music_note_move(_lp, _from, _to, _pitch)
+{
+    if (!music_note_can_move(_lp, _from, _to)) { return false; }
+    if (_from != _to)
+    {
+        music_glide_unlink(_lp, _to);
+        _lp.notes[_to] = _lp.notes[_from];
+        _lp.lengths[_to] = min(_lp.lengths[_from], MUS_STEPS - _to);
+        _lp.insts[_to] = _lp.insts[_from];
+        _lp.fx[_to] = _lp.fx[_from];
+        _lp.fxp[_to] = _lp.fxp[_from];
+        _lp.arps[_to] = _lp.arps[_from];
+        _lp.glide_to[_to] = _lp.glide_to[_from];
+        _lp.fx_end[_to] = -1;
+        if (_lp.fx_end[_from] >= _from) { _lp.fx_end[_to] = clamp(_lp.fx_end[_from] + _to - _from, _to, MUS_STEPS - 1); }
+        _lp.notes[_from] = 0;
+        _lp.lengths[_from] = 0;
+        _lp.insts[_from] = _lp.inst;
+        _lp.fx[_from] = 0;
+        _lp.fxp[_from] = 0;
+        _lp.arps[_from] = 0;
+        _lp.glide_to[_from] = -1;
+        _lp.fx_end[_from] = -1;
+        for (var _source = 0; _source < MUS_STEPS; _source++)
+        {
+            if (_lp.glide_to[_source] == _from) { _lp.glide_to[_source] = _to; }
+        }
+    }
+    _lp.notes[_to] = _pitch;
+    return true;
+}
+
+function music_note_duplicate(_lp, _from, _to, _pitch)
+{
+    if (_from == _to) { return false; }
+    music_glide_unlink(_lp, _to);
+    _lp.notes[_to] = _pitch;
+    _lp.lengths[_to] = min(_lp.lengths[_from], MUS_STEPS - _to);
+    _lp.insts[_to] = _lp.insts[_from];
+    _lp.fx[_to] = _lp.fx[_from];
+    _lp.fxp[_to] = _lp.fxp[_from];
+    _lp.arps[_to] = _lp.arps[_from];
+    _lp.fx_end[_to] = -1;
+    if (_lp.fx_end[_from] >= _from) { _lp.fx_end[_to] = clamp(_lp.fx_end[_from] + _to - _from, _to, MUS_STEPS - 1); }
+    _lp.glide_to[_to] = -1;
+    if (_lp.glide_to[_from] > _to) { _lp.glide_to[_to] = _lp.glide_to[_from]; }
+    return true;
+}
+
+/// The drum grid's rows: the built-in drums and effects, then every synth sound on the Sound page
+function music_drum_rows_refresh()
+{
+    var _rows = [0, 1, 2, 3, 4, 5, 13, 14, 15];
+    for (var k = 0; k < min(SFX_MAX, array_length(proj.sfx)); k++)
+    {
+        if (proj.sfx[k].kind == 0) { array_push(_rows, MUS_INST_USER + k); }
+    }
+    global.MUS_DRUM_ROWS = _rows;
+}
+
+/// The grid row of step _step's note (piano roll: MUS_NOTE_MAX at the top), or -1
+function music_note_row(_lp, _step, _drums)
+{
+    if (!_drums) { return MUS_NOTE_MAX - _lp.notes[_step]; }
+    for (var _row = 0; _row < array_length(global.MUS_DRUM_ROWS); _row++)
+    {
+        if (global.MUS_DRUM_ROWS[_row] == _lp.insts[_step]) { return _row; }
+    }
+    return -1;
+}
+
+/// The notes a selection box (grid pixels) touches
+function music_notes_in_box(_lp, _drums, _cw, _rh, _box)
+{
+    var _selected = array_create(MUS_STEPS, false);
+    var _left = min(_box[0], _box[2]);
+    var _right = max(_box[0], _box[2]);
+    var _top = min(_box[1], _box[3]);
+    var _bottom = max(_box[1], _box[3]);
+    for (var _step = 0; _step < MUS_STEPS; _step++)
+    {
+        if (_lp.notes[_step] <= 0) { continue; }
+        var _row = music_note_row(_lp, _step, _drums);
+        if (_row < 0) { continue; }
+        var _px = _step * _cw;
+        var _py = _row * _rh;
+        _selected[_step] = (_left <= _px + music_note_length(_lp, _step) * _cw - 2 && _right >= _px + 2 && _top <= _py + _rh - 2 && _bottom >= _py + 2);
+    }
+    return _selected;
+}
+
+function music_notes_copy(_lp, _selected, _drums)
+{
+    var _clip = { notes : [], drums : _drums };
+    var _first = MUS_STEPS;
+    var _top = 1000;
+    for (var _step = 0; _step < MUS_STEPS; _step++)
+    {
+        if (!_selected[_step] || _lp.notes[_step] <= 0) { continue; }
+        var _row = music_note_row(_lp, _step, _drums);
+        if (_row < 0) { continue; }
+        _first = min(_first, _step);
+        _top = min(_top, _row);
+    }
+    if (_first == MUS_STEPS) { return _clip; }
+    for (var _step2 = 0; _step2 < MUS_STEPS; _step2++)
+    {
+        if (!_selected[_step2] || _lp.notes[_step2] <= 0) { continue; }
+        var _row2 = music_note_row(_lp, _step2, _drums);
+        if (_row2 < 0) { continue; }
+        var _link = -1;
+        if (music_glide_valid(_lp, _step2) && _selected[_lp.glide_to[_step2]]) { _link = _lp.glide_to[_step2] - _first; }
+        var _end = -1;
+        if (_lp.fx_end[_step2] >= _step2) { _end = _lp.fx_end[_step2] - _first; }
+        array_push(_clip.notes, {
+            step : _step2 - _first, row : _row2 - _top, pitch : _lp.notes[_step2], length : _lp.lengths[_step2],
+            inst : _lp.insts[_step2], arp : _lp.arps[_step2], fx : _lp.fx[_step2],
+            fxp : _lp.fxp[_step2], fx_end : _end, glide_to : _link
+        });
+    }
+    return _clip;
+}
+
+/// Pastes clipboard _clip with its first note at step _step, row _row. A dry run (_apply false)
+/// says how many notes fit, so the page makes an undo point only when something changes.
+function music_notes_paste(_lp, _clip, _step, _row, _drums, _apply = true)
+{
+    var _result = { count : 0, selected : array_create(MUS_STEPS, false) };
+    if (_clip.drums != _drums) { return _result; }
+    var _max_row = MUS_NOTE_MAX;
+    if (_drums) { _max_row = array_length(global.MUS_DRUM_ROWS); }
+    for (var _i = 0; _i < array_length(_clip.notes); _i++)
+    {
+        var _note = _clip.notes[_i];
+        var _to = _step + _note.step;
+        var _to_row = _row + _note.row;
+        if (_to < 0 || _to >= MUS_STEPS || _to_row < 0 || _to_row >= _max_row) { continue; }
+        _result.selected[_to] = true;
+        _result.count += 1;
+        if (_apply) { music_glide_unlink(_lp, _to); }
+    }
+    if (!_apply) { return _result; }
+    for (var _i2 = 0; _i2 < array_length(_clip.notes); _i2++)
+    {
+        var _note2 = _clip.notes[_i2];
+        var _to2 = _step + _note2.step;
+        if (_to2 < 0 || _to2 >= MUS_STEPS || !_result.selected[_to2]) { continue; }
+        var _pitch = MUS_NOTE_MAX - (_row + _note2.row);
+        var _inst = _note2.inst;
+        if (_drums)
+        {
+            _pitch = _note2.pitch;
+            _inst = global.MUS_DRUM_ROWS[_row + _note2.row];
+        }
+        _lp.notes[_to2] = _pitch;
+        _lp.lengths[_to2] = min(_note2.length, MUS_STEPS - _to2);
+        _lp.insts[_to2] = _inst;
+        _lp.arps[_to2] = _note2.arp;
+        _lp.fx[_to2] = _note2.fx;
+        _lp.fxp[_to2] = _note2.fxp;
+        _lp.fx_end[_to2] = -1;
+        if (_note2.fx_end >= _note2.step) { _lp.fx_end[_to2] = min(MUS_STEPS - 1, _step + _note2.fx_end); }
+    }
+    for (var _i3 = 0; _i3 < array_length(_clip.notes); _i3++)
+    {
+        var _note3 = _clip.notes[_i3];
+        var _from = _step + _note3.step;
+        var _tgt = _step + _note3.glide_to;
+        if (_note3.glide_to < 0 || _from < 0 || _from >= MUS_STEPS || _tgt < 0 || _tgt >= MUS_STEPS) { continue; }
+        if (_result.selected[_from] && _result.selected[_tgt]) { _lp.glide_to[_from] = _tgt; }
+    }
+    return _result;
+}
+
+/// Moves the selected notes by _steps and _rows together (undefined when one would fall off)
+function music_notes_move(_lp, _selected, _steps, _rows, _drums, _apply = true)
+{
+    var _result = array_create(MUS_STEPS, false);
+    var _max_row = MUS_NOTE_MAX;
+    if (_drums) { _max_row = array_length(global.MUS_DRUM_ROWS); }
+    for (var _step = 0; _step < MUS_STEPS; _step++)
+    {
+        if (!_selected[_step] || _lp.notes[_step] <= 0) { continue; }
+        var _to = _step + _steps;
+        var _row = music_note_row(_lp, _step, _drums) + _rows;
+        if (_to < 0 || _to >= MUS_STEPS || _row < 0 || _row >= _max_row) { return undefined; }
+        _result[_to] = true;
+    }
+    if (!_apply) { return _result; }
+    var _before = loop_copy(_lp);
+    for (var _s1 = 0; _s1 < MUS_STEPS; _s1++)
+    {
+        if (!_selected[_s1] && !_result[_s1]) { continue; }
+        _lp.notes[_s1] = 0;
+        _lp.insts[_s1] = _lp.inst;
+        _lp.fx[_s1] = 0;
+        _lp.fxp[_s1] = 0;
+        _lp.arps[_s1] = 0;
+        _lp.fx_end[_s1] = -1;
+        _lp.glide_to[_s1] = -1;
+    }
+    for (var _s2 = 0; _s2 < MUS_STEPS; _s2++)
+    {
+        if (!_selected[_s2] || _before.notes[_s2] <= 0) { continue; }
+        var _to2 = _s2 + _steps;
+        _lp.notes[_to2] = _before.notes[_s2] - _rows;
+        _lp.lengths[_to2] = min(_before.lengths[_s2], MUS_STEPS - _to2);
+        _lp.insts[_to2] = _before.insts[_s2];
+        if (_drums)
+        {
+            _lp.notes[_to2] = _before.notes[_s2];
+            _lp.insts[_to2] = global.MUS_DRUM_ROWS[music_note_row(_before, _s2, true) + _rows];
+        }
+        _lp.fx[_to2] = _before.fx[_s2];
+        _lp.fxp[_to2] = _before.fxp[_s2];
+        _lp.arps[_to2] = _before.arps[_s2];
+        if (_before.fx_end[_s2] >= _s2) { _lp.fx_end[_to2] = clamp(_before.fx_end[_s2] + _steps, _to2, MUS_STEPS - 1); }
+    }
+    _lp.glide_to = array_create(MUS_STEPS, -1);
+    for (var _s3 = 0; _s3 < MUS_STEPS; _s3++)
+    {
+        var _target = _before.glide_to[_s3];
+        if (_target < 0) { continue; }
+        if ((!_selected[_s3] && _result[_s3]) || (!_selected[_target] && _result[_target])) { continue; }
+        var _from = _s3;
+        if (_selected[_s3]) { _from += _steps; }
+        if (_selected[_target]) { _target += _steps; }
+        if (_target > _from && _lp.notes[_from] > 0 && _lp.notes[_target] > 0) { _lp.glide_to[_from] = _target; }
+    }
+    return _result;
+}
+
+/// Frames step _k of a bar lasts (the driver's step timing, with swing)
+function music_step_frames(_k, _speed, _swing)
+{
+    var _q = _k & 3;
+    if (_q == 0) { return _speed + _swing; }
+    if (_q == 2) { return _speed - _swing; }
+    return _speed;
 }
 
 function song_from_loaded(_raw)
@@ -454,7 +829,7 @@ function music_inst_compiled(_id, _drum)
 }
 
 /// Compiles songs into { insts[], pats[] (event arrays), songs[] ({ speed, swing, bars, loop, order[3][] }), levels[] }.
-/// Every pattern is a list of 7-byte events: step, note, instrument, length, chord, effect, amount.
+/// Every pattern is a list of MUS_EV_SIZE-byte events (see the top of this file).
 function music_compile(_songs, _levels)
 {
     var _cs = { insts : [], inst_keys : [], pats : [], songs : [], levels : array_create(MUS_LEVELS, 255) };
@@ -474,7 +849,7 @@ function music_compile(_songs, _levels)
                 if (_u >= 0 && _u < array_length(_map) && _map[_u] < 0 && array_length(_cs.pats) < 255)
                 {
                     _map[_u] = array_length(_cs.pats);
-                    array_push(_cs.pats, music_compile_loop(_cs, _song.arr.loops[_u]));
+                    array_push(_cs.pats, music_compile_loop(_cs, _song.arr.loops[_u], _c.speed, _c.swing));
                 }
             }
         }
@@ -497,34 +872,79 @@ function music_compile(_songs, _levels)
     return _cs;
 }
 
-/// One loop -> events; instruments are added to _cs.insts as they are first used
-function music_compile_loop(_cs, _lp)
+/// The compiled instrument index of instrument _id (added to _cs.insts when first used), or -1 when full
+function music_compile_inst(_cs, _id, _drum)
+{
+    var _key = string(_id) + "_" + string(_drum);
+    for (var k = 0; k < array_length(_cs.inst_keys); k++)
+    {
+        if (_cs.inst_keys[k] == _key) { return k; }
+    }
+    if (array_length(_cs.insts) >= 64) { return -1; }
+    array_push(_cs.insts, music_inst_compiled(_id, _drum));
+    array_push(_cs.inst_keys, _key);
+    return array_length(_cs.insts) - 1;
+}
+
+/// One loop -> events; instruments are added to _cs.insts as they are first used.
+/// _speed and _swing are the song's (a linked bend's rate is worked out in frames).
+function music_compile_loop(_cs, _lp, _speed, _swing)
 {
     var _ev = [];
     var _drum = (_lp.cat == 0);
+    // the notes linked bends arrive at: they carry on without a new attack
+    var _arrive = array_create(MUS_STEPS, false);
+    if (!_drum)
+    {
+        for (var g = 0; g < MUS_STEPS; g++)
+        {
+            if (music_glide_valid(_lp, g)) { _arrive[_lp.glide_to[g]] = true; }
+        }
+    }
     for (var st = 0; st < MUS_STEPS; st++)
     {
         var _n = _lp.notes[st];
-        if (_n <= 0) { continue; }
+        var _src = music_fx_active_step(_lp, st);
+        var _fx = 0, _fp = 0, _fd = 0;
+        if (_src >= 0)
+        {
+            _fx = clamp(_lp.fx[_src], 0, 5);
+            _fp = clamp(_lp.fxp[_src], 0, 255);
+            if (_fx == 5) { _fp = min(_fp, 15); }
+            _fd = music_fx_last(_lp, _src) - st + 1;
+        }
+        if (_n <= 0)
+        {
+            // an effect that starts on a step with no note: it changes the note that is sounding
+            if (_src == st) { array_push(_ev, [st, 0, 255, 0, 0, _fx, _fp, _fd]); }
+            continue;
+        }
         var _id = _lp.insts[st];
         if (!_drum) { _id = _lp.inst; }
-        var _key = string(_id) + "_" + string(_drum);
-        var _ii = -1;
-        for (var k = 0; k < array_length(_cs.inst_keys); k++)
-        {
-            if (_cs.inst_keys[k] == _key) { _ii = k; }
-        }
-        if (_ii < 0)
-        {
-            if (array_length(_cs.insts) >= 64) { continue; }
-            array_push(_cs.insts, music_inst_compiled(_id, _drum));
-            array_push(_cs.inst_keys, _key);
-            _ii = array_length(_cs.insts) - 1;
-        }
+        var _ii = music_compile_inst(_cs, _id, _drum);
+        if (_ii < 0) { continue; }
         var _ins = _cs.insts[_ii];
         var _snd = 0;
         if (_ins.fix == 0) { _snd = clamp(_n + _ins.tr, 1, MUS_SOUND_MAX); }
-        array_push(_ev, [st, _snd, _ii, music_note_length(_lp, st), _lp.arps[st] & 255, clamp(_lp.fx[st], 0, 4), clamp(_lp.fxp[st], 0, 255)]);
+        var _ib = _ii;
+        if (_arrive[st] && _ins.fix == 0) { _ib = _ii | 128; }
+        var _len = music_note_length(_lp, st);
+        var _arp = _lp.arps[st] & 255;
+        if (!_drum && _ins.fix == 0 && music_glide_valid(_lp, st))
+        {
+            // a linked bend: slide to the target note so it arrives on its step (the gate stays on)
+            var _t = _lp.glide_to[st];
+            var _tsnd = clamp(_lp.notes[_t] + _ins.tr, 1, MUS_SOUND_MAX);
+            var _frames = 0;
+            for (var k = st; k < _t; k++) { _frames += music_step_frames(k, _speed, _swing); }
+            var _rate = clamp(round(abs(music_note_freq(_tsnd) - music_note_freq(_snd)) / max(1, _frames)), 1, 65535);
+            _fx = 6;
+            _arp = _tsnd;
+            _fp = _rate & 255;
+            _fd = _rate >> 8;
+            _len = min(MUS_STEPS, _t - st + 1);
+        }
+        array_push(_ev, [st, _snd, _ib, _len, _arp, _fx, _fp, _fd]);
     }
     return _ev;
 }
@@ -636,7 +1056,7 @@ function mus_player_new(_cs, _song, _bar, _once)
     for (var i = 0; i < MUS_LANES; i++)
     {
         array_push(_pl.v, { on : false, pat : [], idx : 0, act : false, note : 0, ins : 0, gt : 0, arp : 0, as : 0, fx : 0, fp : 0, vph : 0,
-                            fl : 0, tl : 0, pw : 2048, pws : 0, first : false });
+                            fl : 0, tl : 0, pw : 2048, pws : 0, first : false, fs : 0, rh : 0, bt : 0 });
         array_push(_pl.sv, mus_sidv_new());
     }
     mus_player_play(_pl, _song, _bar);
@@ -719,16 +1139,33 @@ function mus_player_step(_pl)
 function mus_player_note(_pl, _i)
 {
     var _v = _pl.v[_i];
+    // an effect lasts its number of steps
+    if (_v.fs > 0)
+    {
+        _v.fs -= 1;
+        if (_v.fs == 0) { _v.fx = 0; }
+    }
     if (!_v.on || _pl.done) { return; }
     if (_v.idx >= array_length(_v.pat)) { return; }
     var _e = _v.pat[_v.idx];
     if (_e[0] != _pl.step) { return; }
     _v.idx += 1;
-    _v.note = _e[1];
-    _v.ins = _e[2];
-    _v.arp = _e[4];
     _v.fx = _e[5];
     _v.fp = _e[6];
+    var _arp = _e[4];
+    if (_v.fx == 6)
+    {
+        // a linked bend: the target note and the 16-bit rate
+        _v.rh = _e[7];
+        _v.bt = music_note_freq(_arp);
+        _v.fs = 0;
+        _arp = 0;
+    }
+    else { _v.fs = _e[7]; }
+    if (_e[2] == 255) { return; }                  // only an effect
+    _v.note = _e[1];
+    _v.ins = _e[2] & 127;
+    _v.arp = _arp;
     _v.gt = min(255, _e[3] * _pl.speed);
     var _in = _pl.cs.insts[_v.ins];
     if (_in.fix > 0)
@@ -738,6 +1175,11 @@ function mus_player_note(_pl, _i)
     else
     {
         _v.tl = music_note_freq(_v.note);
+        if ((_e[2] & 128) != 0 && _v.act)
+        {
+            _v.fl = _v.tl;                         // a bend arrives: the note carries on
+            return;
+        }
         if (_v.fx == 4 && _v.act) { return; }      // glide: no new attack, the pitch slides in
         _v.fl = _v.tl;
     }
@@ -770,13 +1212,21 @@ function mus_player_voice(_pl, _i)
     if (_v.fx == 2) { _v.fl = max(0, _v.fl - _v.fp * 8); }
     if (_v.fx == 3)
     {
-        if (((_v.vph + 4) & 8) == 0) { _v.fl = min(65535, _v.fl + _v.fp * 2); }
-        else { _v.fl = max(0, _v.fl - _v.fp * 2); }
-        _v.vph = (_v.vph + 1) & 15;
+        // vibrato: depth in bits 0-5, speed - 1 in bits 6-7
+        var _inc = (_v.fp >> 6) + 1;
+        var _vd = (_v.fp & 63) * 2 * _inc;
+        if (((_v.vph + 4) & 8) == 0) { _v.fl = min(65535, _v.fl + _vd); }
+        else { _v.fl = max(0, _v.fl - _vd); }
+        _v.vph = (_v.vph + _inc) & 15;
     }
-    if (_v.fx == 4)
+    if (_v.fx == 4 || _v.fx == 6)
     {
         var _d = _v.fp * 16;
+        if (_v.fx == 6)
+        {
+            _v.tl = _v.bt;
+            _d = _v.fp | (_v.rh << 8);
+        }
         if (_v.fl < _v.tl) { _v.fl = min(_v.tl, _v.fl + _d); }
         else { _v.fl = max(_v.tl, _v.fl - _d); }
     }
@@ -792,6 +1242,10 @@ function mus_player_voice(_pl, _i)
     var _sv = _pl.sv[_i];
     _sv.freq = _out;
     _sv.pw = _v.pw;
+    // the envelope every frame; the volume effect sets the sustain level
+    _sv.ad = _in.ad;
+    _sv.sr = _in.sr;
+    if (_v.fx == 5) { _sv.sr = ((_v.fp & 15) << 4) | (_in.sr & 15); }
     var _w = _in.w;
     if (_v.first)
     {
@@ -984,11 +1438,20 @@ function music_emit(L, _p)
     array_push(L, "ms_bar:", " lda m_ol,x", " sta " + _z, " lda m_oh,x", " sta " + _z1, " ldy m_bar", " lda (" + _z + "),y", " cmp #$ff", " bne mb_p", " lda #0", " sta mv_on,x", " rts");
     array_push(L, "mb_p:", " tay", " lda mp_lo,y", " sta mv_pl,x", " lda mp_hi,y", " sta mv_ph,x", " lda #0", " sta mv_idx,x", " lda #1", " sta mv_on,x", " rts");
     // a note: read the event when it is for this step
-    array_push(L, "ms_note:", " lda mv_on,x", " bne mn_1", " rts");
+    // an effect lasts its number of steps
+    array_push(L, "ms_note:", " lda mv_fs,x", " beq mn_0", " dec mv_fs,x", " bne mn_0", " lda #0", " sta mv_fx,x");
+    array_push(L, "mn_0:", " lda mv_on,x", " bne mn_1", " rts");
     array_push(L, "mn_1:", " lda mv_pl,x", " sta " + _z, " lda mv_ph,x", " sta " + _z1, " ldy mv_idx,x", " lda (" + _z + "),y", " cmp m_step", " beq mn_2", " rts");
-    array_push(L, "mn_2:", " iny", " lda (" + _z + "),y", " sta mv_note,x", " iny", " lda (" + _z + "),y", " sta mv_ins,x");
-    array_push(L, " iny", " lda (" + _z + "),y", " sta m_t1", " iny", " lda (" + _z + "),y", " sta mv_arp,x");
-    array_push(L, " iny", " lda (" + _z + "),y", " sta mv_fx,x", " iny", " lda (" + _z + "),y", " sta mv_fp,x", " iny", " tya", " sta mv_idx,x");
+    array_push(L, "mn_2:", " iny", " lda (" + _z + "),y", " sta m_t3", " iny", " lda (" + _z + "),y", " sta m_t4");
+    array_push(L, " iny", " lda (" + _z + "),y", " sta m_t1", " iny", " lda (" + _z + "),y", " sta m_t5");
+    array_push(L, " iny", " lda (" + _z + "),y", " sta mv_fx,x", " iny", " lda (" + _z + "),y", " sta mv_fp,x", " iny", " lda (" + _z + "),y", " sta m_t6", " iny", " tya", " sta mv_idx,x");
+    // a linked bend: its target note (in the chord byte) and 16-bit rate; else the effect's length
+    array_push(L, " lda mv_fx,x", " cmp #6", " bne mn_fd", " lda m_t6", " sta mv_rh,x", " ldy m_t5", " lda mft_lo,y", " sta mv_bl,x", " lda mft_hi,y", " sta mv_bh,x");
+    array_push(L, " lda #0", " sta mv_fs,x", " sta m_t5", " beq mn_ev");
+    array_push(L, "mn_fd:", " lda m_t6", " sta mv_fs,x");
+    // only an effect: the note sounding carries on
+    array_push(L, "mn_ev:", " lda m_t4", " cmp #255", " bne mn_3", " rts");
+    array_push(L, "mn_3:", " and #127", " sta mv_ins,x", " lda m_t3", " sta mv_note,x", " lda m_t5", " sta mv_arp,x");
     // gate time = length x speed frames (at most 255)
     array_push(L, " lda #0", " ldy m_t1");
     array_push(L, "mn_g:", " clc", " adc m_speed", " bcc mn_g2", " lda #255");
@@ -996,12 +1459,15 @@ function music_emit(L, _p)
     // frequency: a drum's own pitch, or the note's (glide keeps the old note sounding)
     array_push(L, " ldy mv_ins,x", " lda mi_fix,y", " beq mn_tone", " sta mv_fh,x", " lda #0", " sta mv_fl,x", " jmp mn_set");
     array_push(L, "mn_tone:", " ldy mv_note,x", " lda mft_lo,y", " sta mv_tl,x", " lda mft_hi,y", " sta mv_th,x");
-    array_push(L, " lda mv_fx,x", " cmp #4", " bne mn_jump", " lda mv_act,x", " beq mn_jump", " rts");
+    // a bend arrives (instrument + 128): the note carries on at its pitch, no new attack
+    array_push(L, " lda m_t4", " bpl mn_nl", " lda mv_act,x", " beq mn_jump", " jmp mn_lg");
+    array_push(L, "mn_nl:", " lda mv_fx,x", " cmp #4", " bne mn_jump", " lda mv_act,x", " beq mn_jump", " rts");
     array_push(L, "mn_jump:", " lda mv_tl,x", " sta mv_fl,x", " lda mv_th,x", " sta mv_fh,x");
     array_push(L, "mn_set:", " ldy mv_ins,x", " lda mi_pwl,y", " sta mv_pwl,x", " lda mi_pwh,y", " sta mv_pwh,x", " lda mi_pws,y", " sta mv_pws,x");
     array_push(L, " lda #0", " sta mv_as,x", " sta mv_vph,x", " lda #1", " sta mv_act,x", " sta mv_first,x");
     array_push(L, " jsr mv_busy", " bne mn_r", " sta $d404,x", " ldy mv_ins,x", " lda mi_ad,y", " sta $d405,x", " lda mi_sr,y", " sta $d406,x");
     array_push(L, "mn_r:", " rts");
+    array_push(L, "mn_lg:", " lda mv_tl,x", " sta mv_fl,x", " lda mv_th,x", " sta mv_fh,x", " rts");
     // ---- a voice, every frame ----
     array_push(L, "mu_voice:", " lda mv_act,x", " bne mv_1", " rts");
     array_push(L, "mv_1:", " lda mv_gt,x", " beq mv_2", " dec mv_gt,x");
@@ -1011,18 +1477,26 @@ function music_emit(L, _p)
     array_push(L, "mv_sws:", " sta mv_fh,x");
     // effects: m_t1/m_t2 = the amount as a 16-bit step
     array_push(L, "mv_efx:", " lda mv_fx,x", " bne mv_f0", " jmp mv_out");
-    array_push(L, "mv_f0:", " lda mv_fp,x", " sta m_t1", " lda #0", " sta m_t2", " lda mv_fx,x", " cmp #3", " beq mv_vib", " cmp #4", " beq mv_gli");
+    array_push(L, "mv_f0:", " lda mv_fp,x", " sta m_t1", " lda #0", " sta m_t2", " lda mv_fx,x", " cmp #3", " bne mv_fa", " jmp mv_vib");
+    array_push(L, "mv_fa:", " cmp #4", " bne mv_fb", " jmp mv_gli", "mv_fb:", " cmp #6", " bne mv_fc", " jmp mv_bend", "mv_fc:", " cmp #5", " bne mv_fd", " jmp mv_out", "mv_fd:");
     // slide: amount x 8
     array_push(L, " asl m_t1", " rol m_t2", " asl m_t1", " rol m_t2", " asl m_t1", " rol m_t2", " lda mv_fx,x", " cmp #1", " bne mv_dn");
     array_push(L, "mv_up:", " clc", " lda mv_fl,x", " adc m_t1", " sta mv_fl,x", " lda mv_fh,x", " adc m_t2", " bcc mv_upo", " lda #$ff", " sta mv_fl,x");
     array_push(L, "mv_upo:", " sta mv_fh,x", " jmp mv_out");
     array_push(L, "mv_dn:", " sec", " lda mv_fl,x", " sbc m_t1", " sta mv_fl,x", " lda mv_fh,x", " sbc m_t2", " bcs mv_dno", " lda #0", " sta mv_fl,x");
     array_push(L, "mv_dno:", " sta mv_fh,x", " jmp mv_out");
-    // vibrato: amount x 2, up for 4 frames, down for 8, up for 4
-    array_push(L, "mv_vib:", " asl m_t1", " rol m_t2", " lda mv_vph,x", " clc", " adc #1", " and #15", " sta mv_vph,x", " sec", " sbc #1", " clc", " adc #4", " and #8", " beq mv_up", " jmp mv_dn");
+    // vibrato: depth (bits 0-5) x 2 x speed (bits 6-7, + 1); up for a quarter of the cycle,
+    // down for a half, up for a quarter; the speed is how far round the 16-step cycle a frame goes
+    array_push(L, "mv_vib:", " lda mv_fp,x", " and #63", " sta m_t1", " lda mv_fp,x", " rol", " rol", " rol", " and #3", " clc", " adc #1", " sta m_t3");
+    array_push(L, " asl m_t1", " rol m_t2", " lda #0", " sta m_t4", " sta m_t5", " ldy m_t3");
+    array_push(L, "mvv_m:", " clc", " lda m_t4", " adc m_t1", " sta m_t4", " lda m_t5", " adc m_t2", " sta m_t5", " dey", " bne mvv_m");
+    array_push(L, " lda m_t4", " sta m_t1", " lda m_t5", " sta m_t2");
+    array_push(L, " lda mv_vph,x", " tay", " clc", " adc m_t3", " and #15", " sta mv_vph,x", " tya", " clc", " adc #4", " and #8", " bne mvv_d", " jmp mv_up", "mvv_d:", " jmp mv_dn");
+    // a linked bend: its own target and 16-bit rate, then as a glide
+    array_push(L, "mv_bend:", " lda mv_bl,x", " sta mv_tl,x", " lda mv_bh,x", " sta mv_th,x", " lda mv_fp,x", " sta m_t1", " lda mv_rh,x", " sta m_t2", " jmp mv_gcmp");
     // glide: amount x 16 towards the target note
     array_push(L, "mv_gli:", " asl m_t1", " rol m_t2", " asl m_t1", " rol m_t2", " asl m_t1", " rol m_t2", " asl m_t1", " rol m_t2");
-    array_push(L, " lda mv_fh,x", " cmp mv_th,x", " bne mv_gc", " lda mv_fl,x", " cmp mv_tl,x", " bne mv_gc", " jmp mv_out");
+    array_push(L, "mv_gcmp:", " lda mv_fh,x", " cmp mv_th,x", " bne mv_gc", " lda mv_fl,x", " cmp mv_tl,x", " bne mv_gc", " jmp mv_out");
     array_push(L, "mv_gc:", " bcs mv_gd");
     array_push(L, " clc", " lda mv_fl,x", " adc m_t1", " sta mv_fl,x", " lda mv_fh,x", " adc m_t2", " sta mv_fh,x", " bcs mv_gset");
     array_push(L, " cmp mv_th,x", " bcc mv_out", " bne mv_gset", " lda mv_fl,x", " cmp mv_tl,x", " bcc mv_out", " jmp mv_gset");
@@ -1044,7 +1518,10 @@ function music_emit(L, _p)
     // to the SID, unless a sound effect has the voice
     array_push(L, "mv_wr:", " jsr mv_busy", " bne mv_x", " lda m_t1", " sta $d400,x", " lda m_t2", " sta $d401,x", " lda mv_pwl,x", " sta $d402,x", " lda mv_pwh,x", " sta $d403,x");
     // the envelope again every frame: a sound effect may have changed it while it had the voice
-    array_push(L, " ldy mv_ins,x", " lda mi_ad,y", " sta $d405,x", " lda mi_sr,y", " sta $d406,x", " lda mv_first,x", " beq mv_wm", " lda #0", " sta mv_first,x", " lda mi_w1,y", " bne mv_ws");
+    // (the volume effect sets the sustain level)
+    array_push(L, " ldy mv_ins,x", " lda mi_ad,y", " sta $d405,x", " lda mv_fx,x", " cmp #5", " bne mv_sr0");
+    array_push(L, " lda mv_fp,x", " asl", " asl", " asl", " asl", " sta m_t1", " lda mi_sr,y", " and #$0f", " ora m_t1", " jmp mv_sr1");
+    array_push(L, "mv_sr0:", " lda mi_sr,y", "mv_sr1:", " sta $d406,x", " lda mv_first,x", " beq mv_wm", " lda #0", " sta mv_first,x", " lda mi_w1,y", " bne mv_ws");
     array_push(L, "mv_wm:", " lda mi_w,y");
     array_push(L, "mv_ws:", " ldy mv_gt,x", " beq mv_wg", " ora #1", " jmp mv_wo");
     array_push(L, "mv_wg:", " and #$fe");
@@ -1140,9 +1617,11 @@ function music_emit(L, _p)
     array_push(L, "mus_lvl:", " .byte " + _lv);
     // variables: per voice, indexed by the voice's SID register offset (0, 7, 14)
     var _vv = ["mv_on", "mv_pl", "mv_ph", "mv_idx", "mv_act", "mv_note", "mv_ins", "mv_gt", "mv_arp", "mv_as", "mv_fx", "mv_fp", "mv_vph",
-               "mv_fl", "mv_fh", "mv_tl", "mv_th", "mv_pwl", "mv_pwh", "mv_pws", "mv_first", "m_ol", "m_oh"];
+               "mv_fl", "mv_fh", "mv_tl", "mv_th", "mv_pwl", "mv_pwh", "mv_pws", "mv_first", "m_ol", "m_oh",
+               "mv_fs", "mv_rh", "mv_bl", "mv_bh"];
     for (var q = 0; q < array_length(_vv); q++) { array_push(L, _vv[q] + ":", " .fill 15,0"); }
-    var _gv = ["m_on", "m_song", "m_bar", "m_step", "m_tick", "m_speed", "m_swing", "m_bars", "m_loop", "m_t1", "m_t2", "m_sx", "m_sy", "m_pbar", "m_pstep"];
+    var _gv = ["m_on", "m_song", "m_bar", "m_step", "m_tick", "m_speed", "m_swing", "m_bars", "m_loop", "m_t1", "m_t2", "m_sx", "m_sy", "m_pbar", "m_pstep",
+               "m_t3", "m_t4", "m_t5", "m_t6"];
     for (var q2 = 0; q2 < array_length(_gv); q2++) { array_push(L, _gv[q2] + ":", " .fill 1,0"); }
     array_push(L, "mus_end:");
 }
