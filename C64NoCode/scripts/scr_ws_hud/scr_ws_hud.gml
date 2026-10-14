@@ -37,7 +37,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
     if (_p.game_type == 1)
     {
         ui_text(_fx + 4, _y + 33, "Top", global.TH.text_dim, fa_left, fa_middle, global.f_body, 1);
-        ui_register("hud_pos", _fx, _y + 18, _fx + _half, _y + 48, "Where|A map game's HUD sits above the scrolling window. How many rows it has room for is set by the window's top on the World page.");
+        ui_register("hud_pos", _fx, _y + 18, _fx + _half, _y + 48, "Where|A map game's HUD sits above the scrolling window: the window starts below the panel (or lower, as the World page sets).");
     }
     else
     {
@@ -47,7 +47,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
     }
     set_val(_u, "rows", ui_stepper("hud_rows", _fx + _half + 8, _y + 18, _half, clamp(_u.rows, 1, _rmax), 1, _rmax, "Height|Text rows of 8 lines: 1 is a slim strip, 3 a frame round one line of text. Fields on rows below the panel are not shown."), "hudrows");
     _y += 58;
-    if (_p.game_type == 1) { ui_text(_fx, _y - 4, "Room for " + string(_rmax) + " rows above the window", global.TH.text_faint, fa_left, fa_top, global.f_small, 1); _y += 18; }
+    if (_p.game_type == 1) { ui_text(_fx, _y - 4, "Scrolling window from row " + string(eng_wtop(_p)), global.TH.text_faint, fa_left, fa_top, global.f_small, 1); _y += 18; }
     set_val(_u, "frame_on", ui_toggle("hud_frame_on", _fx, _y, "Panel frame", _u.frame_on, "Panel frame|Draws the 9-slice frame: 9 characters for the corners, the edges (repeated along the panel) and the fill. Off: the screen shows behind the text."), "hudframeon");
     _y += 32;
     ui_heading(_fx, _y, "Frame style");
@@ -111,7 +111,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
     var _addn = ["+ Field"];
     for (var t = 0; t < hud_type_count(_p); t++) { array_push(_addn, _types[t]); }
     var _bw = floor((_fw - 8) / 2);
-    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal, the level number and the tile carried (Dig and place).");
+    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal, the level number, the tile carried and the tool in use (Dig and place).");
     if (_add > 0 && _nf < HUD_FIELDS_MAX && _u.on)
     {
         undo_mark("hudadd" + string(current_time));
@@ -126,6 +126,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
             case 3: _nfd.label = "GEMS "; break;
             case 4: _nfd.label = "LEVEL "; _nfd.digits = 1; break;
             case 5: _nfd.label = ""; break;
+            case 6: _nfd.label = ""; break;
         }
         array_push(_u.fields, _nfd);
         hud_sel = array_length(_u.fields) - 1;

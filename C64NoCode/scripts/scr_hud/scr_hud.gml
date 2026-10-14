@@ -24,13 +24,13 @@ function hud_frame_styles()
 
 function hud_field_types()
 {
-    return ["Text", "Score", "Lives", "Goal", "Level", "Tile carried"];
+    return ["Text", "Score", "Lives", "Goal", "Level", "Tile carried", "Tool"];
 }
 
 /// Field types this kind of game has (Goal and Level belong to map games)
 function hud_type_count(_p)
 {
-    return (_p.game_type == 1) ? 6 : 3;
+    return (_p.game_type == 1) ? 7 : 3;
 }
 
 /// The custom HUD of a new project: off (the standard HUD is used)
@@ -84,7 +84,7 @@ function hud_from_loaded(_raw)
             var _src = _u.fields[f];
             if (!is_struct(_src)) { continue; }
             var _fd = struct_overlay(hud_field_new(0), _src);
-            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 5) : 0;
+            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 6) : 0;
             if (!is_string(_fd.label)) { _fd.label = ""; }
             _fd.label = string_upper(string_copy(_fd.label, 1, HUD_LABEL_MAX));
             _fd.col = is_numeric(_fd.col) ? clamp(floor(_fd.col), 0, 39) : 0;
@@ -104,10 +104,31 @@ function hud_project_fix(_p)
     _p.hud = hud_from_loaded(_p[$ "hud"]);
 }
 
-/// How many rows the panel can have: a map game's panel sits above the scrolling window
+/// Does any level have a goal counter?
+function eng_need_any(_p)
+{
+    for (var i = 0; i < array_length(_p.levels); i++)
+    {
+        if (_p.levels[i].need > 0) { return true; }
+    }
+    return false;
+}
+
+/// The map game's window top row as built. The raster split for the window comes 4 lines
+/// before the row above it ends, so only the rows above that are clean: the window starts
+/// below a custom HUD's panel, and below the standard HUD's second row when it needs one.
+function eng_wtop(_p)
+{
+    var _w = clamp(_p.eng.wtop, 2, 4);
+    if (_p.hud.on) { _w = max(_w, min(4, clamp(_p.hud.rows, 1, 3) + 1)); }
+    else if (tile_dig_on(_p) && eng_need_any(_p)) { _w = max(_w, 3); }
+    return _w;
+}
+
+/// How many rows the panel can have: a map game's panel sits above the scrolling window (up to 3)
 function hud_rows_max(_p)
 {
-    if (_p.game_type == 1) { return clamp(_p.eng.wtop, 2, 4); }
+    if (_p.game_type == 1) { return 3; }
     return HUD_ROWS_MAX;
 }
 
@@ -364,6 +385,10 @@ function hud_field_value(_p, _f, _sample)
             if (!_sample) { return "     00"; }
             var _tn = (array_length(_p.tiles) > 1) ? _p.tiles[1].name : "DIRT";
             return string_upper(string_copy(_tn + "    ", 1, 4)) + " 03";
+        case 6:
+            // the tool in use (Tiles page: Tools tab), 8 letters
+            var _tl = (array_length(_p.eng.tools) > 0) ? _p.eng.tools[0].name : "";
+            return string_upper(string_copy(_tl + "        ", 1, 8));
     }
     return "";
 }
@@ -640,6 +665,13 @@ function hud_emit_map(L, _p)
                 for (var c6 = 0; c6 < 4; c6++) { array_push(L, " sta SCR+" + string(_lv.pos + c6)); }
                 array_push(L, "hud_m" + string(v) + ":");
                 break;
+            case 6:
+                if (tools_on(_p))
+                {
+                    array_push(L, " lda tool_cur", " asl", " asl", " asl", " tax");
+                    for (var c7 = 0; c7 < 8; c7++) { array_push(L, " lda tl_name+" + string(c7) + ",x", " sta SCR+" + string(_lv.pos + c7)); }
+                }
+                break;
             case 4:
                 array_push(L, " lda level", " clc", " adc #1", " jsr bin2dec");
                 if (_d == 2) { array_push(L, " stx " + _a, " sta SCR+" + string(_lv.pos + 1)); }
@@ -662,11 +694,11 @@ function hud_warnings(_p)
     if (!_u.on) { return _w; }
     var _cs = hud_charset(_p);
     if (_cs.missing) { array_push(_w, "Custom HUD: no frame - the game needs 9 characters it doesn't use (it uses nearly all 256)."); }
-    if (_p.game_type == 1 && _u.rows > hud_rows_max(_p)) { array_push(_w, "Custom HUD: only " + string(hud_rows_max(_p)) + " rows fit above the scrolling window (World page: window top)."); }
     for (var f = 0; f < array_length(_u.fields); f++)
     {
         var _fd = _u.fields[f];
         if (_fd.type >= hud_type_count(_p)) { array_push(_w, "Custom HUD: a " + hud_field_types()[_fd.type] + " field only works in a map game - it shows its label only."); }
+        if (_fd.type == 6 && !tools_on(_p)) { array_push(_w, "Custom HUD: the Tool field needs Dig and place and at least one tool (Tiles page: Tools)."); }
         if (_fd.type == 5 && !tile_dig_on(_p)) { array_push(_w, "Custom HUD: the Tile carried field shows nothing until Dig and place is on (Tiles page)."); }
         if (_fd.row >= hud_rows(_p, _u)) { array_push(_w, "Custom HUD: a field is on row " + string(_fd.row) + ", below the panel - it isn't shown."); }
     }
@@ -735,7 +767,7 @@ function hud_preview_render(_x, _y, _sc)
     {
         // the map game: the first level in its window, as the game starts
         var _e = _p.eng;
-        var _wtop = clamp(_e.wtop, 2, 4);
+        var _wtop = eng_wtop(_p);
         var _wrows = clamp(_e.wrows, 6, 24 - _wtop);
         if (array_length(_p.levels) > 0)
         {

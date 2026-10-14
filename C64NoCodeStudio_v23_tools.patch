@@ -1,0 +1,770 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index 2339b5f..a6847ea 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -165,7 +165,16 @@ main:
+     eor #$ff
+     and #$1f
+     sta joy
++    .if TOOLS
++    jsr tool_menu
++    beq main_go
++    lda #0
++    sta pend
++    jmp main_snd
++main_go:
++    .endif
+     jsr game_logic
++main_snd:
+     jsr sfx_update
+     lda game_state
+     beq main
+@@ -2180,25 +2189,77 @@ og_n:
+ ; puts the tile carried down in front; while fire is held the player stands still
+     .if DIG_PLACE
+ dig_place:
++    .if TOOLS
++    ; the tools (Tiles page, Tools tab): a weapon shoots as usual; after the menu, fire must be let go first
++    lda tm_wait
++    beq dp_tw
++    lda joy
++    and #16
++    bne dp_hold
++    lda #0
++    sta tm_wait
++dp_tw:
++    ldx tool_cur
++    lda tl_act,x
++    sta dp_act
++    cmp #3
++    bne dp_tw2
++    rts
++dp_tw2:
++    .endif
+     lda joy
+     and #16
+     bne dp_f
+     sta dp_last
+     sta dp_cnt
+     rts
++dp_hold:
++    lda #0
++    sta joy
++    rts
+ dp_f:
+     lda joy
+     and #15
+     sta dp_dirs
+-    lda #16
++    lda #0
+     sta joy
++    .if TOOLS
++    lda dp_act
++    beq dp_tdig
++    ; build (1) or put a tile here (2): once each press
++    lda dp_last
++    bne dp_rt
++    lda #1
++    sta dp_last
++    lda dp_act
++    cmp #2
++    bne dp_tb
++    jmp dp_here
++dp_tb:
++    jsr dp_dirn
++    jmp dp_put
++dp_tdig:
++    ; dig: fire on its own digs the way the player faces
++    lda dp_dirs
++    bne dp_dig
++    lda e_dir
++    and #7
++    tax
++    lda dp_fbits,x
++    sta dp_dirs
++    jmp dp_dig
++    .else
+     lda dp_dirs
+     bne dp_dig
+     lda dp_last
+     bne dp_rt
+     lda #1
+     sta dp_last
++    lda e_dir
++    and #7
++    sta dp_pdir
+     jmp dp_put
++    .endif
+ dp_rt:
+     rts
+ dp_dig:
+@@ -2277,9 +2338,7 @@ dp_new:
+ dp_put:
+     lda carry_n
+     beq dp_r2
+-    lda e_dir
+-    and #7
+-    tay
++    ldy dp_pdir
+     lda dp_py,y
+     sta t6
+     lda dp_px,y
+@@ -2307,6 +2366,172 @@ dp_r2:
+ ; the point in front of the player for each direction (up, up-right, right ... up-left)
+ dp_px: .byte 12,19,19,19,12,4,4,4
+ dp_py: .byte 2,11,11,11,21,11,11,11
++    .if TOOLS
++; joystick bits for the way the player faces
++dp_fbits: .byte 1,8,8,8,2,4,4,4
++; dp_pdir: the direction the joystick points (left / right first), or the way the player faces
++dp_dirn:
++    ldx #6
++    lda dp_dirs
++    and #4
++    bne dpd_s
++    ldx #2
++    lda dp_dirs
++    and #8
++    bne dpd_s
++    ldx #0
++    lda dp_dirs
++    and #1
++    bne dpd_s
++    ldx #4
++    lda dp_dirs
++    and #2
++    bne dpd_s
++    lda e_dir
++    and #7
++    tax
++dpd_s:
++    stx dp_pdir
++    rts
++; 'Put a tile here': the tool's tile where the player stands - its middle, else its feet
++dp_here:
++    ldx tool_cur
++    lda tl_tile,x
++    sta dp_t
++    ldx #0
++    lda #12
++    ldy #11
++    jsr ent_point
++    jsr tile_at
++    cpx #0
++    beq dph_ok
++    ldx #0
++    lda #12
++    ldy #18
++    jsr ent_point
++    jsr tile_at
++    cpx #0
++    bne dph_no
++dph_ok:
++    lda t3
++    bmi dph_no
++    lda dp_t
++    jsr set_tile
++    ldx dp_t
++    lda tsfx,x
++    jmp play_sfx
++dph_no:
++    rts
++
++; the space bar menu over the HUD's top row (the one row a scrolling window never touches):
++; left / right pick a tool, fire or space takes it.
++; Returns A = 1 while it is open (the game waits).
++tool_menu:
++    lda #$7f
++    sta $dc00
++    lda $dc01
++    and #$10
++    eor #$10
++    sta tm_now
++    eor tm_last
++    and tm_now
++    sta tm_press
++    lda tm_now
++    sta tm_last
++    lda tm_open
++    bne tm_in
++    lda tm_press
++    beq tm_no
++    lda #1
++    sta tm_open
++    lda tool_cur
++    sta tm_sel
++    lda joy
++    sta tm_jl
++    jsr tm_save
++    jsr tm_draw
++tm_yes:
++    lda #1
++    rts
++tm_no:
++    lda #0
++    rts
++tm_in:
++    lda tm_jl
++    eor #$ff
++    and joy
++    sta t6
++    lda joy
++    sta tm_jl
++    lda t6
++    and #4
++    beq tm_i1
++    dec tm_sel
++    bpl tm_i1
++    lda #NTOOL-1
++    sta tm_sel
++tm_i1:
++    lda t6
++    and #8
++    beq tm_i2
++    inc tm_sel
++    lda tm_sel
++    cmp #NTOOL
++    bcc tm_i2
++    lda #0
++    sta tm_sel
++tm_i2:
++    lda t6
++    and #16
++    ora tm_press
++    beq tm_i3
++    lda tm_sel
++    sta tool_cur
++    lda #0
++    sta tm_open
++    lda #1
++    sta tm_wait
++    jsr tm_restore
++    jmp tm_yes
++tm_i3:
++    jsr tm_draw
++    jmp tm_yes
++tm_save:
++    ldx #39
++tms1:
++    lda SCR+HUDROW*40,x
++    sta tm_buf,x
++    lda COLR+HUDROW*40,x
++    sta tm_buf+40,x
++    lda #1
++    sta COLR+HUDROW*40,x
++    dex
++    bpl tms1
++    rts
++tm_restore:
++    ldx #39
++tmr1:
++    lda tm_buf,x
++    sta SCR+HUDROW*40,x
++    lda tm_buf+40,x
++    sta COLR+HUDROW*40,x
++    dex
++    bpl tmr1
++    rts
++tm_draw:
++    ldx tm_sel
++    lda tm_lo,x
++    sta zp_s
++    lda tm_hi,x
++    sta zp_s+1
++    ldy #39
++tmd1:
++    lda (zp_s),y
++    sta SCR+HUDROW*40,y
++    dey
++    bpl tmd1
++    rts
++    .endif
+     .endif
+ 
+ ; ---------- cave digger (grid moves of 16px) ----------
+@@ -3736,8 +3961,23 @@ hu_r:
+     .endif
+ 
+     .if DIG_PLACE
+-; the tile carried (Tiles page: Dig and place): its name and how many, row 1
++; the tile carried (Tiles page: Dig and place): its name and how many (HC_POS), and the tool (HT_POS)
+ hud_carry:
++    .if TOOLS
++    lda tool_cur
++    asl
++    asl
++    asl
++    tax
++    ldy #0
++hct1:
++    lda tl_name,x
++    sta SCR+HT_POS,y
++    inx
++    iny
++    cpy #8
++    bne hct1
++    .endif
+     lda carry_n
+     beq hc_none
+     lda carry_t
+@@ -3747,21 +3987,21 @@ hud_carry:
+     ldy #0
+ hc1:
+     lda tname,x
+-    sta SCR+HUDROW*40+41,y
++    sta SCR+HC_POS,y
+     inx
+     iny
+     cpy #4
+     bne hc1
+     lda carry_n
+     jsr bin2dec
+-    stx SCR+HUDROW*40+46
+-    sta SCR+HUDROW*40+47
++    stx SCR+HC_POS+5
++    sta SCR+HC_POS+6
+     rts
+ hc_none:
+     lda #32
+     ldy #6
+ hc2:
+-    sta SCR+HUDROW*40+41,y
++    sta SCR+HC_POS,y
+     dey
+     bpl hc2
+     rts
+@@ -3851,6 +4091,17 @@ dp_cy:     .fill 1,0
+ dp_last:   .fill 1,0
+ dp_dirs:   .fill 1,0
+ dp_t:      .fill 1,0
++dp_act:    .fill 1,0
++dp_pdir:   .fill 1,0
++tool_cur:  .fill 1,0
++tm_open:   .fill 1,0
++tm_sel:    .fill 1,0
++tm_now:    .fill 1,0
++tm_last:   .fill 1,0
++tm_press:  .fill 1,0
++tm_jl:     .fill 1,0
++tm_wait:   .fill 1,0
++tm_buf:    .fill 80,0
+ nsp:       .fill 1,0
+ sp_ptr:    .fill 2,0
+ sp_scan:   .fill 1,0
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index fb37abf..dbc46c1 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -57,6 +57,8 @@ function eng_settings_new()
+         sfx_shoot : 1, sfx_hit : 2, sfx_die : 6, sfx_collect : 0, sfx_jump : 3, sfx_exit : 5,
+         // the Tiles page: fire + a direction digs, fire puts the tile carried down (platform / top-down)
+         dig_place : false,
++        // the Tiles page's Tools tab: the space bar menu (tool_new)
++        tools : [],
+         // the Animate page: the player, its shot and the enemies' shot (enemy types hold their own)
+         anim_p : anim_holder_new(), anim_b : anim_holder_new(), anim_eb : anim_holder_new()
+     };
+@@ -192,13 +194,16 @@ function engine_codegen(_p)
+         if (_e.scroll == SCROLL_V) { _auto_v = 1; }
+     }
+     if ((_sh == 1 || _sv == 1) && _auto_h == 0 && _auto_v == 0) { _follow = 1; }
+-    var _wtop = clamp(_e.wtop, 2, 4);
++    // the window starts below a custom HUD's panel (and the standard HUD's second row with Dig and place)
++    var _wtop = eng_wtop(_p);
+     var _wrows = clamp(_e.wrows, 6, 24 - _wtop - _sv);
+     var _autodiv = [0, 1, 3];
+     var _gravdiv = [0, 1, 3];
+     var _dig = tile_dig_on(_p);
+     var _wpn = clamp(_e.weapon, 0, 4);
+-    if (_dig) { _wpn = 0; }                 // fire digs and places instead
++    // fire digs and places instead - unless a tool is a weapon, which shoots the World page's weapon
++    var _tools = tools_on(_p) ? 1 : 0;
++    if (_dig) { _wpn = tools_have_weapon(_p) ? max(1, _wpn) : 0; }
+     var _mcbit = 0;
+     if (_e.mc) { _mcbit = 16; }
+     var _cols = 8;
+@@ -225,7 +230,7 @@ function engine_codegen(_p)
+         ["SCROLL_H", _sh], ["SCROLL_V", _sv], ["FLIP", _flip], ["FOLLOW", _follow],
+         ["AUTO_H", _auto_h], ["AUTO_V", _auto_v], ["AUTODIV", _autodiv[clamp(_e.auto_speed, 0, 2)]],
+         ["WTOP", _wtop], ["WROWS", _wrows], ["HUDROW", 0], ["FULLCOL", _e.fullcol],
+-        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1], ["DIG_PLACE", _dig], ["HUD_COLN", (_dig && !_hud_on) ? 80 : 40],
++        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1], ["DIG_PLACE", _dig], ["TOOLS", _tools], ["NTOOL", max(1, array_length(_e.tools))], ["HUD_COLN", (_dig && !_hud_on && eng_need_any(_p)) ? 80 : 40], ["HC_POS", eng_need_any(_p) ? 41 : 21], ["HT_POS", eng_need_any(_p) ? 50 : 30],
+         ["BORDER", _e.border], ["BG", _e.bg], ["MC1", _e.mc1], ["MC2", _e.mc2], ["SMC1", _e.smc1], ["SMC2", _e.smc2],
+         ["PSPEED", clamp(_e.pspeed, 1, 4)], ["JUMPV", clamp(_e.jumpv, 2, 9)], ["GRAVDIV", _gravdiv[clamp(_e.grav, 0, 2)]],
+         ["MAXFALL", clamp(_e.maxfall, 2, 8)], ["WEAPON_ON", (_wpn > 0)], ["WEAPON_DOUBLE", (_wpn == 2)], ["WEAPON_SPREAD", (_wpn == 3)],
+@@ -283,6 +288,7 @@ function engine_codegen(_p)
+     // tiles (64)
+     var _nt = min(64, array_length(_p.tiles));
+     tile_emit_tables(L, _p, _nt, _dig);
++    if (_tools) { tools_emit(L, _p); }
+     var _tabs = ["tc0", "tc1", "tc2", "tc3", "tcol", "tattr", "tscore"];
+     for (var tb = 0; tb < 7; tb++)
+     {
+diff --git a/C64NoCode/scripts/scr_hud/scr_hud.gml b/C64NoCode/scripts/scr_hud/scr_hud.gml
+index 3a63406..afe86aa 100644
+--- a/C64NoCode/scripts/scr_hud/scr_hud.gml
++++ b/C64NoCode/scripts/scr_hud/scr_hud.gml
+@@ -24,13 +24,13 @@ function hud_frame_styles()
+ 
+ function hud_field_types()
+ {
+-    return ["Text", "Score", "Lives", "Goal", "Level", "Tile carried"];
++    return ["Text", "Score", "Lives", "Goal", "Level", "Tile carried", "Tool"];
+ }
+ 
+ /// Field types this kind of game has (Goal and Level belong to map games)
+ function hud_type_count(_p)
+ {
+-    return (_p.game_type == 1) ? 6 : 3;
++    return (_p.game_type == 1) ? 7 : 3;
+ }
+ 
+ /// The custom HUD of a new project: off (the standard HUD is used)
+@@ -84,7 +84,7 @@ function hud_from_loaded(_raw)
+             var _src = _u.fields[f];
+             if (!is_struct(_src)) { continue; }
+             var _fd = struct_overlay(hud_field_new(0), _src);
+-            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 5) : 0;
++            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 6) : 0;
+             if (!is_string(_fd.label)) { _fd.label = ""; }
+             _fd.label = string_upper(string_copy(_fd.label, 1, HUD_LABEL_MAX));
+             _fd.col = is_numeric(_fd.col) ? clamp(floor(_fd.col), 0, 39) : 0;
+@@ -104,10 +104,31 @@ function hud_project_fix(_p)
+     _p.hud = hud_from_loaded(_p[$ "hud"]);
+ }
+ 
+-/// How many rows the panel can have: a map game's panel sits above the scrolling window
++/// Does any level have a goal counter?
++function eng_need_any(_p)
++{
++    for (var i = 0; i < array_length(_p.levels); i++)
++    {
++        if (_p.levels[i].need > 0) { return true; }
++    }
++    return false;
++}
++
++/// The map game's window top row as built. The raster split for the window comes 4 lines
++/// before the row above it ends, so only the rows above that are clean: the window starts
++/// below a custom HUD's panel, and below the standard HUD's second row when it needs one.
++function eng_wtop(_p)
++{
++    var _w = clamp(_p.eng.wtop, 2, 4);
++    if (_p.hud.on) { _w = max(_w, min(4, clamp(_p.hud.rows, 1, 3) + 1)); }
++    else if (tile_dig_on(_p) && eng_need_any(_p)) { _w = max(_w, 3); }
++    return _w;
++}
++
++/// How many rows the panel can have: a map game's panel sits above the scrolling window (up to 3)
+ function hud_rows_max(_p)
+ {
+-    if (_p.game_type == 1) { return clamp(_p.eng.wtop, 2, 4); }
++    if (_p.game_type == 1) { return 3; }
+     return HUD_ROWS_MAX;
+ }
+ 
+@@ -364,6 +385,10 @@ function hud_field_value(_p, _f, _sample)
+             if (!_sample) { return "     00"; }
+             var _tn = (array_length(_p.tiles) > 1) ? _p.tiles[1].name : "DIRT";
+             return string_upper(string_copy(_tn + "    ", 1, 4)) + " 03";
++        case 6:
++            // the tool in use (Tiles page: Tools tab), 8 letters
++            var _tl = (array_length(_p.eng.tools) > 0) ? _p.eng.tools[0].name : "";
++            return string_upper(string_copy(_tl + "        ", 1, 8));
+     }
+     return "";
+ }
+@@ -640,6 +665,13 @@ function hud_emit_map(L, _p)
+                 for (var c6 = 0; c6 < 4; c6++) { array_push(L, " sta SCR+" + string(_lv.pos + c6)); }
+                 array_push(L, "hud_m" + string(v) + ":");
+                 break;
++            case 6:
++                if (tools_on(_p))
++                {
++                    array_push(L, " lda tool_cur", " asl", " asl", " asl", " tax");
++                    for (var c7 = 0; c7 < 8; c7++) { array_push(L, " lda tl_name+" + string(c7) + ",x", " sta SCR+" + string(_lv.pos + c7)); }
++                }
++                break;
+             case 4:
+                 array_push(L, " lda level", " clc", " adc #1", " jsr bin2dec");
+                 if (_d == 2) { array_push(L, " stx " + _a, " sta SCR+" + string(_lv.pos + 1)); }
+@@ -662,11 +694,11 @@ function hud_warnings(_p)
+     if (!_u.on) { return _w; }
+     var _cs = hud_charset(_p);
+     if (_cs.missing) { array_push(_w, "Custom HUD: no frame - the game needs 9 characters it doesn't use (it uses nearly all 256)."); }
+-    if (_p.game_type == 1 && _u.rows > hud_rows_max(_p)) { array_push(_w, "Custom HUD: only " + string(hud_rows_max(_p)) + " rows fit above the scrolling window (World page: window top)."); }
+     for (var f = 0; f < array_length(_u.fields); f++)
+     {
+         var _fd = _u.fields[f];
+         if (_fd.type >= hud_type_count(_p)) { array_push(_w, "Custom HUD: a " + hud_field_types()[_fd.type] + " field only works in a map game - it shows its label only."); }
++        if (_fd.type == 6 && !tools_on(_p)) { array_push(_w, "Custom HUD: the Tool field needs Dig and place and at least one tool (Tiles page: Tools)."); }
+         if (_fd.type == 5 && !tile_dig_on(_p)) { array_push(_w, "Custom HUD: the Tile carried field shows nothing until Dig and place is on (Tiles page)."); }
+         if (_fd.row >= hud_rows(_p, _u)) { array_push(_w, "Custom HUD: a field is on row " + string(_fd.row) + ", below the panel - it isn't shown."); }
+     }
+@@ -735,7 +767,7 @@ function hud_preview_render(_x, _y, _sc)
+     {
+         // the map game: the first level in its window, as the game starts
+         var _e = _p.eng;
+-        var _wtop = clamp(_e.wtop, 2, 4);
++        var _wtop = eng_wtop(_p);
+         var _wrows = clamp(_e.wrows, 6, 24 - _wtop);
+         if (array_length(_p.levels) > 0)
+         {
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index 34f9b3b..82b61fd 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -340,6 +340,7 @@ function project_from_loaded(_raw)
+     // map-game engine data
+     var _eng = eng_settings_new();
+     struct_overlay(_eng, _raw[$ "eng"]);
++    _eng.tools = tools_fix(_eng.tools);
+     _p.eng = _eng;
+     if (!is_array(_p.charset) || array_length(_p.charset) != 2048)
+     {
+diff --git a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+index 0c828f1..f808e30 100644
+--- a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
++++ b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+@@ -37,7 +37,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
+     if (_p.game_type == 1)
+     {
+         ui_text(_fx + 4, _y + 33, "Top", global.TH.text_dim, fa_left, fa_middle, global.f_body, 1);
+-        ui_register("hud_pos", _fx, _y + 18, _fx + _half, _y + 48, "Where|A map game's HUD sits above the scrolling window. How many rows it has room for is set by the window's top on the World page.");
++        ui_register("hud_pos", _fx, _y + 18, _fx + _half, _y + 48, "Where|A map game's HUD sits above the scrolling window: the window starts below the panel (or lower, as the World page sets).");
+     }
+     else
+     {
+@@ -47,7 +47,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
+     }
+     set_val(_u, "rows", ui_stepper("hud_rows", _fx + _half + 8, _y + 18, _half, clamp(_u.rows, 1, _rmax), 1, _rmax, "Height|Text rows of 8 lines: 1 is a slim strip, 3 a frame round one line of text. Fields on rows below the panel are not shown."), "hudrows");
+     _y += 58;
+-    if (_p.game_type == 1) { ui_text(_fx, _y - 4, "Room for " + string(_rmax) + " rows above the window", global.TH.text_faint, fa_left, fa_top, global.f_small, 1); _y += 18; }
++    if (_p.game_type == 1) { ui_text(_fx, _y - 4, "Scrolling window from row " + string(eng_wtop(_p)), global.TH.text_faint, fa_left, fa_top, global.f_small, 1); _y += 18; }
+     set_val(_u, "frame_on", ui_toggle("hud_frame_on", _fx, _y, "Panel frame", _u.frame_on, "Panel frame|Draws the 9-slice frame: 9 characters for the corners, the edges (repeated along the panel) and the fill. Off: the screen shows behind the text."), "hudframeon");
+     _y += 32;
+     ui_heading(_fx, _y, "Frame style");
+@@ -111,7 +111,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
+     var _addn = ["+ Field"];
+     for (var t = 0; t < hud_type_count(_p); t++) { array_push(_addn, _types[t]); }
+     var _bw = floor((_fw - 8) / 2);
+-    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal, the level number and the tile carried (Dig and place).");
++    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal, the level number, the tile carried and the tool in use (Dig and place).");
+     if (_add > 0 && _nf < HUD_FIELDS_MAX && _u.on)
+     {
+         undo_mark("hudadd" + string(current_time));
+@@ -126,6 +126,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
+             case 3: _nfd.label = "GEMS "; break;
+             case 4: _nfd.label = "LEVEL "; _nfd.digits = 1; break;
+             case 5: _nfd.label = ""; break;
++            case 6: _nfd.label = ""; break;
+         }
+         array_push(_u.fields, _nfd);
+         hud_sel = array_length(_u.fields) - 1;
+diff --git a/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml b/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
+index ef592d8..7ae74f3 100644
+--- a/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
++++ b/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
+@@ -277,13 +277,14 @@ function ws_tiles_draw(_x1, _y1, _x2, _y2)
+ 
+     // ---------------- centre: Tile set or Characters ----------------
+     ui_panel(_cx1, _y1, _cx2, _y2, "");
+-    var _tabs = ["Tile set", "Characters"];
+-    var _thelp = ["Tile set|Draw the tile's pixels: it is 2 x 2 characters, and a character other tiles share is copied first so they don't change.", "Characters|Which character goes in each corner of the tile - pick from all 256. Edit their shapes here on the Tile set tab, or on the Charset page."];
+-    for (var tb = 0; tb < 2; tb++)
++    var _tabs = ["Tile set", "Characters", "Tools"];
++    var _thelp = ["Tile set|Draw the tile's pixels: it is 2 x 2 characters, and a character other tiles share is copied first so they don't change.", "Characters|Which character goes in each corner of the tile - pick from all 256. Edit their shapes here on the Tile set tab, or on the Charset page.", "Tools|The player's tools: space opens a menu in the game to pick one (a pickaxe, a hammer, a ladder...) and fire uses it."];
++    for (var tb = 0; tb < 3; tb++)
+     {
+         if (ui_tab("tile_tab_" + string(tb), _cx1 + 16 + tb * 136, _y1 + 12, 130, 30, _tabs[tb], tile_page == tb, _thelp[tb])) { tile_page = tb; }
+     }
+-    if (tile_page == 1) { tiles_chars_editor(_cx1, _y1 + 50, _cx2, _y2); }
++    if (tile_page == 2) { tiles_tools_editor(_cx1, _y1 + 50, _cx2, _y2); }
++    else if (tile_page == 1) { tiles_chars_editor(_cx1, _y1 + 50, _cx2, _y2); }
+     else { tiles_set_editor(_cx1, _y1 + 50, _cx2, _y2); }
+ 
+     // ---------------- right: the picked tile ----------------
+@@ -557,3 +558,183 @@ function tiles_chars_editor(_x1, _y1, _x2, _y2)
+         }
+     }
+ }
++
++// ---------------------------------------------------------------------------
++// The tools (Tools tab): the space bar menu in the game, ported from ADAM
++// ---------------------------------------------------------------------------
++
++#macro TOOL_MAX 6
++#macro TOOL_NAME_LEN 8
++
++/// A tool: _act 0 = dig, 1 = build with the tile carried, 2 = put tile _tile where the player
++/// stands (a ladder, a torch), 3 = weapon (fire shoots the World page's weapon)
++function tool_new(_name, _act, _tile)
++{
++    return { name : _name, act : _act, tile : _tile };
++}
++
++function tool_act_names()
++{
++    return ["Dig", "Build (tile carried)", "Put a tile here", "Weapon (shoots)"];
++}
++
++/// The tools of a loaded project, made safe
++function tools_fix(_raw)
++{
++    var _out = [];
++    if (!is_array(_raw)) { return _out; }
++    for (var i = 0; i < min(TOOL_MAX, array_length(_raw)); i++)
++    {
++        var _src = _raw[i];
++        if (!is_struct(_src)) { continue; }
++        var _t = struct_overlay(tool_new("TOOL", 0, 0), _src);
++        if (!is_string(_t.name)) { _t.name = "TOOL"; }
++        _t.name = string_upper(string_copy(_t.name, 1, TOOL_NAME_LEN));
++        _t.act = is_numeric(_t.act) ? clamp(floor(_t.act), 0, 3) : 0;
++        _t.tile = is_numeric(_t.tile) ? clamp(floor(_t.tile), 0, 63) : 0;
++        array_push(_out, _t);
++    }
++    return _out;
++}
++
++/// Does the game have the tools menu (Dig and place on, and at least one tool)?
++function tools_on(_p)
++{
++    return tile_dig_on(_p) && array_length(_p.eng.tools) > 0;
++}
++
++function tools_have_weapon(_p)
++{
++    if (!tools_on(_p)) { return false; }
++    for (var i = 0; i < array_length(_p.eng.tools); i++)
++    {
++        if (_p.eng.tools[i].act == 3) { return true; }
++    }
++    return false;
++}
++
++/// The menu line as the game shows it with tool _sel picked (40 columns)
++function tools_menu_line(_p, _sel)
++{
++    var _l = "";
++    for (var j = 0; j < array_length(_p.eng.tools); j++)
++    {
++        _l += ((j == _sel) ? ">" : " ") + _p.eng.tools[j].name + " ";
++    }
++    return _l;
++}
++
++/// The engine's tool tables: tl_act, tl_tile, tl_name (8 letters each), and the menu
++/// lines (40 screen codes, one for each tool picked) with tm_lo / tm_hi
++function tools_emit(L, _p)
++{
++    var _tl = _p.eng.tools;
++    var _n = array_length(_tl);
++    var _nt = max(1, min(64, array_length(_p.tiles)));
++    var _act = [];
++    var _tile = [];
++    var _name = [];
++    for (var i = 0; i < _n; i++)
++    {
++        array_push(_act, _tl[i].act);
++        array_push(_tile, clamp(_tl[i].tile, 0, _nt - 1));
++        var _nm = string_upper(string_copy(_tl[i].name + "        ", 1, 8));
++        for (var k = 0; k < 8; k++) { array_push(_name, scr_code_from_char(string_char_at(_nm, k + 1)) & 63); }
++    }
++    array_push(L, "tl_act:");
++    eng_emit_bytes(L, _act);
++    array_push(L, "tl_tile:");
++    eng_emit_bytes(L, _tile);
++    array_push(L, "tl_name:");
++    eng_emit_bytes(L, _name);
++    var _lo = [];
++    var _hi = [];
++    for (var s = 0; s < _n; s++)
++    {
++        var _ln = string_upper(string_copy(tools_menu_line(_p, s) + string_repeat(" ", 40), 1, 40));
++        var _b = [];
++        for (var c = 0; c < 40; c++) { array_push(_b, scr_code_from_char(string_char_at(_ln, c + 1)) & 63); }
++        array_push(L, "tm_line" + string(s) + ":");
++        eng_emit_bytes(L, _b);
++        array_push(_lo, "<tm_line" + string(s));
++        array_push(_hi, ">tm_line" + string(s));
++    }
++    array_push(L, "tm_lo:", " .byte " + string_join_ext(",", _lo));
++    array_push(L, "tm_hi:", " .byte " + string_join_ext(",", _hi));
++}
++
++/// The Tools tab: the space bar menu's tools - up to TOOL_MAX, each a name, what fire does
++/// with it and (to put down) its tile. None: fire digs and places as before.
++function tiles_tools_editor(_x1, _y1, _x2, _y2)
++{
++    var _e = proj.eng;
++    var _fx = _x1 + 20;
++    var _fw = _x2 - _x1 - 40;
++    var _y = _y1 + 8;
++    var _intro = "In the game, space opens a menu of these tools along the top: left and right pick one, fire or space takes it, and from then on fire uses it. With no tools, fire + a direction digs and fire on its own puts the tile carried down. Needs Dig and place (left).";
++    ui_text_wrap(_fx, _y, _intro, global.TH.text_dim, _fw, global.f_body, 1);
++    draw_set_font(global.f_body);
++    _y += ceil(ui_sh_ext(_intro, _fw)) + 12;
++    if (!tile_dig_on(proj))
++    {
++        ui_text_wrap(_fx, _y, "Dig and place is off (or this kind of game doesn't dig), so the game has no tools.", global.TH.warn, _fw, global.f_body, 1);
++        _y += 30;
++    }
++    var _acts = tool_act_names();
++    var _tn = [];
++    for (var k = 0; k < array_length(proj.tiles); k++) { array_push(_tn, string(k) + ": " + proj.tiles[k].name); }
++    var _nw = 130;
++    var _aw = min(220, floor((_fw - _nw - 50) / 2));
++    var _tw = _fw - _nw - _aw - 50 - 24;
++    ui_heading(_fx, _y, "Name");
++    ui_heading(_fx + _nw + 8, _y, "Fire does");
++    ui_heading(_fx + _nw + _aw + 16, _y, "Tile it puts down");
++    _y += 20;
++    var _del = -1;
++    for (var i = 0; i < array_length(_e.tools); i++)
++    {
++        var _t = _e.tools[i];
++        var _id = "tool" + string(i) + "_";
++        var _nm = ui_textfield(_id + "name", _fx, _y, _nw, 30, _t.name, TOOL_NAME_LEN, "Tool name|Up to 8 letters, shown in the space bar menu and on the HUD.");
++        set_val(_t, "name", string_upper(_nm), "toolname" + string(i));
++        set_val(_t, "act", ui_dropdown(_id + "act", _fx + _nw + 8, _y, _aw, 30, _acts, _t.act, "Fire does|Dig: fire digs the way the player faces (or fire + a direction digs that way), held down. Build: fire puts the tile carried (the last one dug) where the joystick points, or in front. Put a tile here: fire puts the tile picked here where the player stands - a ladder to climb out of a hole. Weapon: fire shoots the World page's weapon."), "toolact" + string(i));
++        if (_t.act == 2)
++        {
++            set_val(_t, "tile", ui_dropdown(_id + "tile", _fx + _nw + _aw + 16, _y, _tw, 30, _tn, clamp(_t.tile, 0, array_length(_tn) - 1), "Tile it puts down|A ladder tile (Ladder on, Solid off) to climb, or a background tile like a torch. It goes where the player's middle is, or its feet, if that cell is empty."), "tooltile" + string(i));
++        }
++        if (ui_button(_id + "del", _fx + _fw - 50, _y, 50, 30, "X", "Remove this tool|You can Undo it.", BTN_DANGER)) { _del = i; }
++        _y += 38;
++    }
++    if (_del >= 0)
++    {
++        undo_mark("tooldel" + string(current_time));
++        array_delete(_e.tools, _del, 1);
++    }
++    var _bst = (array_length(_e.tools) >= TOOL_MAX) ? BTN_GHOST : BTN_NORMAL;
++    if (ui_button("tool_add", _fx, _y + 4, 160, 30, "Add a tool", "Add a tool|Up to " + string(TOOL_MAX) + " tools. Keep the names short so they all fit across the screen.", _bst) && array_length(_e.tools) < TOOL_MAX)
++    {
++        undo_mark("tooladd" + string(current_time));
++        var _names = ["PICK", "HAMMER", "LADDER", "TORCH", "TOOL5", "TOOL6"];
++        var _n = array_length(_e.tools);
++        var _a = (_n == 0) ? 0 : ((_n == 1) ? 1 : 2);
++        array_push(_e.tools, tool_new(_names[_n], _a, 0));
++    }
++    // the menu as the game shows it (40 columns)
++    var _line = tools_menu_line(proj, 0);
++    if (string_length(_line) > 40)
++    {
++        ui_text_wrap(_fx, _y + 46, "The menu is " + string(string_length(_line)) + " letters across - only 40 fit. Shorten some names.", global.TH.warn, _fw, global.f_body, 1);
++    }
++    else if (array_length(_e.tools) > 0)
++    {
++        ui_heading(_fx, _y + 48, "The menu in the game");
++        ui_inset(_fx, _y + 68, _fx + _fw, _y + 104, 6);
++        var _cs = clamp(floor((_fw - 16) / 320 * 2) / 2, 1, 2);
++        for (var c = 0; c < string_length(_line); c++)
++        {
++            var _code = scr_code_from_char(string_char_at(_line, c + 1));
++            if (_code != 32) { draw_c64_char(_code, _fx + 8 + c * 8 * _cs, _y + 78, _cs, c_white); }
++        }
++        ui_text_wrap(_fx, _y + 116, "The HUD shows the tool in use next to the tile carried (or add a Tool field on the UI page).", global.TH.text_faint, _fw, global.f_small, 1);
++    }
++}

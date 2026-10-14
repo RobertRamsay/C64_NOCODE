@@ -340,6 +340,7 @@ function project_from_loaded(_raw)
     // map-game engine data
     var _eng = eng_settings_new();
     struct_overlay(_eng, _raw[$ "eng"]);
+    _eng.tools = tools_fix(_eng.tools);
     _p.eng = _eng;
     if (!is_array(_p.charset) || array_length(_p.charset) != 2048)
     {

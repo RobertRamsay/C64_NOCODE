@@ -57,6 +57,8 @@ function eng_settings_new()
         sfx_shoot : 1, sfx_hit : 2, sfx_die : 6, sfx_collect : 0, sfx_jump : 3, sfx_exit : 5,
         // the Tiles page: fire + a direction digs, fire puts the tile carried down (platform / top-down)
         dig_place : false,
+        // the Tiles page's Tools tab: the space bar menu (tool_new)
+        tools : [],
         // the Animate page: the player, its shot and the enemies' shot (enemy types hold their own)
         anim_p : anim_holder_new(), anim_b : anim_holder_new(), anim_eb : anim_holder_new()
     };
@@ -192,13 +194,16 @@ function engine_codegen(_p)
         if (_e.scroll == SCROLL_V) { _auto_v = 1; }
     }
     if ((_sh == 1 || _sv == 1) && _auto_h == 0 && _auto_v == 0) { _follow = 1; }
-    var _wtop = clamp(_e.wtop, 2, 4);
+    // the window starts below a custom HUD's panel (and the standard HUD's second row with Dig and place)
+    var _wtop = eng_wtop(_p);
     var _wrows = clamp(_e.wrows, 6, 24 - _wtop - _sv);
     var _autodiv = [0, 1, 3];
     var _gravdiv = [0, 1, 3];
     var _dig = tile_dig_on(_p);
     var _wpn = clamp(_e.weapon, 0, 4);
-    if (_dig) { _wpn = 0; }                 // fire digs and places instead
+    // fire digs and places instead - unless a tool is a weapon, which shoots the World page's weapon
+    var _tools = tools_on(_p) ? 1 : 0;
+    if (_dig) { _wpn = tools_have_weapon(_p) ? max(1, _wpn) : 0; }
     var _mcbit = 0;
     if (_e.mc) { _mcbit = 16; }
     var _cols = 8;
@@ -225,7 +230,7 @@ function engine_codegen(_p)
         ["SCROLL_H", _sh], ["SCROLL_V", _sv], ["FLIP", _flip], ["FOLLOW", _follow],
         ["AUTO_H", _auto_h], ["AUTO_V", _auto_v], ["AUTODIV", _autodiv[clamp(_e.auto_speed, 0, 2)]],
         ["WTOP", _wtop], ["WROWS", _wrows], ["HUDROW", 0], ["FULLCOL", _e.fullcol],
-        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1], ["DIG_PLACE", _dig], ["HUD_COLN", (_dig && !_hud_on) ? 80 : 40],
+        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1], ["DIG_PLACE", _dig], ["TOOLS", _tools], ["NTOOL", max(1, array_length(_e.tools))], ["HUD_COLN", (_dig && !_hud_on && eng_need_any(_p)) ? 80 : 40], ["HC_POS", eng_need_any(_p) ? 41 : 21], ["HT_POS", eng_need_any(_p) ? 50 : 30],
         ["BORDER", _e.border], ["BG", _e.bg], ["MC1", _e.mc1], ["MC2", _e.mc2], ["SMC1", _e.smc1], ["SMC2", _e.smc2],
         ["PSPEED", clamp(_e.pspeed, 1, 4)], ["JUMPV", clamp(_e.jumpv, 2, 9)], ["GRAVDIV", _gravdiv[clamp(_e.grav, 0, 2)]],
         ["MAXFALL", clamp(_e.maxfall, 2, 8)], ["WEAPON_ON", (_wpn > 0)], ["WEAPON_DOUBLE", (_wpn == 2)], ["WEAPON_SPREAD", (_wpn == 3)],
@@ -283,6 +288,7 @@ function engine_codegen(_p)
     // tiles (64)
     var _nt = min(64, array_length(_p.tiles));
     tile_emit_tables(L, _p, _nt, _dig);
+    if (_tools) { tools_emit(L, _p); }
     var _tabs = ["tc0", "tc1", "tc2", "tc3", "tcol", "tattr", "tscore"];
     for (var tb = 0; tb < 7; tb++)
     {

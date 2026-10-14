@@ -165,7 +165,16 @@ main:
     eor #$ff
     and #$1f
     sta joy
+    .if TOOLS
+    jsr tool_menu
+    beq main_go
+    lda #0
+    sta pend
+    jmp main_snd
+main_go:
+    .endif
     jsr game_logic
+main_snd:
     jsr sfx_update
     lda game_state
     beq main
@@ -2180,25 +2189,77 @@ og_n:
 ; puts the tile carried down in front; while fire is held the player stands still
     .if DIG_PLACE
 dig_place:
+    .if TOOLS
+    ; the tools (Tiles page, Tools tab): a weapon shoots as usual; after the menu, fire must be let go first
+    lda tm_wait
+    beq dp_tw
+    lda joy
+    and #16
+    bne dp_hold
+    lda #0
+    sta tm_wait
+dp_tw:
+    ldx tool_cur
+    lda tl_act,x
+    sta dp_act
+    cmp #3
+    bne dp_tw2
+    rts
+dp_tw2:
+    .endif
     lda joy
     and #16
     bne dp_f
     sta dp_last
     sta dp_cnt
     rts
+dp_hold:
+    lda #0
+    sta joy
+    rts
 dp_f:
     lda joy
     and #15
     sta dp_dirs
-    lda #16
+    lda #0
     sta joy
+    .if TOOLS
+    lda dp_act
+    beq dp_tdig
+    ; build (1) or put a tile here (2): once each press
+    lda dp_last
+    bne dp_rt
+    lda #1
+    sta dp_last
+    lda dp_act
+    cmp #2
+    bne dp_tb
+    jmp dp_here
+dp_tb:
+    jsr dp_dirn
+    jmp dp_put
+dp_tdig:
+    ; dig: fire on its own digs the way the player faces
+    lda dp_dirs
+    bne dp_dig
+    lda e_dir
+    and #7
+    tax
+    lda dp_fbits,x
+    sta dp_dirs
+    jmp dp_dig
+    .else
     lda dp_dirs
     bne dp_dig
     lda dp_last
     bne dp_rt
     lda #1
     sta dp_last
+    lda e_dir
+    and #7
+    sta dp_pdir
     jmp dp_put
+    .endif
 dp_rt:
     rts
 dp_dig:
@@ -2277,9 +2338,7 @@ dp_new:
 dp_put:
     lda carry_n
     beq dp_r2
-    lda e_dir
-    and #7
-    tay
+    ldy dp_pdir
     lda dp_py,y
     sta t6
     lda dp_px,y
@@ -2307,6 +2366,172 @@ dp_r2:
 ; the point in front of the player for each direction (up, up-right, right ... up-left)
 dp_px: .byte 12,19,19,19,12,4,4,4
 dp_py: .byte 2,11,11,11,21,11,11,11
+    .if TOOLS
+; joystick bits for the way the player faces
+dp_fbits: .byte 1,8,8,8,2,4,4,4
+; dp_pdir: the direction the joystick points (left / right first), or the way the player faces
+dp_dirn:
+    ldx #6
+    lda dp_dirs
+    and #4
+    bne dpd_s
+    ldx #2
+    lda dp_dirs
+    and #8
+    bne dpd_s
+    ldx #0
+    lda dp_dirs
+    and #1
+    bne dpd_s
+    ldx #4
+    lda dp_dirs
+    and #2
+    bne dpd_s
+    lda e_dir
+    and #7
+    tax
+dpd_s:
+    stx dp_pdir
+    rts
+; 'Put a tile here': the tool's tile where the player stands - its middle, else its feet
+dp_here:
+    ldx tool_cur
+    lda tl_tile,x
+    sta dp_t
+    ldx #0
+    lda #12
+    ldy #11
+    jsr ent_point
+    jsr tile_at
+    cpx #0
+    beq dph_ok
+    ldx #0
+    lda #12
+    ldy #18
+    jsr ent_point
+    jsr tile_at
+    cpx #0
+    bne dph_no
+dph_ok:
+    lda t3
+    bmi dph_no
+    lda dp_t
+    jsr set_tile
+    ldx dp_t
+    lda tsfx,x
+    jmp play_sfx
+dph_no:
+    rts
+
+; the space bar menu over the HUD's top row (the one row a scrolling window never touches):
+; left / right pick a tool, fire or space takes it.
+; Returns A = 1 while it is open (the game waits).
+tool_menu:
+    lda #$7f
+    sta $dc00
+    lda $dc01
+    and #$10
+    eor #$10
+    sta tm_now
+    eor tm_last
+    and tm_now
+    sta tm_press
+    lda tm_now
+    sta tm_last
+    lda tm_open
+    bne tm_in
+    lda tm_press
+    beq tm_no
+    lda #1
+    sta tm_open
+    lda tool_cur
+    sta tm_sel
+    lda joy
+    sta tm_jl
+    jsr tm_save
+    jsr tm_draw
+tm_yes:
+    lda #1
+    rts
+tm_no:
+    lda #0
+    rts
+tm_in:
+    lda tm_jl
+    eor #$ff
+    and joy
+    sta t6
+    lda joy
+    sta tm_jl
+    lda t6
+    and #4
+    beq tm_i1
+    dec tm_sel
+    bpl tm_i1
+    lda #NTOOL-1
+    sta tm_sel
+tm_i1:
+    lda t6
+    and #8
+    beq tm_i2
+    inc tm_sel
+    lda tm_sel
+    cmp #NTOOL
+    bcc tm_i2
+    lda #0
+    sta tm_sel
+tm_i2:
+    lda t6
+    and #16
+    ora tm_press
+    beq tm_i3
+    lda tm_sel
+    sta tool_cur
+    lda #0
+    sta tm_open
+    lda #1
+    sta tm_wait
+    jsr tm_restore
+    jmp tm_yes
+tm_i3:
+    jsr tm_draw
+    jmp tm_yes
+tm_save:
+    ldx #39
+tms1:
+    lda SCR+HUDROW*40,x
+    sta tm_buf,x
+    lda COLR+HUDROW*40,x
+    sta tm_buf+40,x
+    lda #1
+    sta COLR+HUDROW*40,x
+    dex
+    bpl tms1
+    rts
+tm_restore:
+    ldx #39
+tmr1:
+    lda tm_buf,x
+    sta SCR+HUDROW*40,x
+    lda tm_buf+40,x
+    sta COLR+HUDROW*40,x
+    dex
+    bpl tmr1
+    rts
+tm_draw:
+    ldx tm_sel
+    lda tm_lo,x
+    sta zp_s
+    lda tm_hi,x
+    sta zp_s+1
+    ldy #39
+tmd1:
+    lda (zp_s),y
+    sta SCR+HUDROW*40,y
+    dey
+    bpl tmd1
+    rts
+    .endif
     .endif
 
 ; ---------- cave digger (grid moves of 16px) ----------
@@ -3736,8 +3961,23 @@ hu_r:
     .endif
 
     .if DIG_PLACE
-; the tile carried (Tiles page: Dig and place): its name and how many, row 1
+; the tile carried (Tiles page: Dig and place): its name and how many (HC_POS), and the tool (HT_POS)
 hud_carry:
+    .if TOOLS
+    lda tool_cur
+    asl
+    asl
+    asl
+    tax
+    ldy #0
+hct1:
+    lda tl_name,x
+    sta SCR+HT_POS,y
+    inx
+    iny
+    cpy #8
+    bne hct1
+    .endif
     lda carry_n
     beq hc_none
     lda carry_t
@@ -3747,21 +3987,21 @@ hud_carry:
     ldy #0
 hc1:
     lda tname,x
-    sta SCR+HUDROW*40+41,y
+    sta SCR+HC_POS,y
     inx
     iny
     cpy #4
     bne hc1
     lda carry_n
     jsr bin2dec
-    stx SCR+HUDROW*40+46
-    sta SCR+HUDROW*40+47
+    stx SCR+HC_POS+5
+    sta SCR+HC_POS+6
     rts
 hc_none:
     lda #32
     ldy #6
 hc2:
-    sta SCR+HUDROW*40+41,y
+    sta SCR+HC_POS,y
     dey
     bpl hc2
     rts
@@ -3851,6 +4091,17 @@ dp_cy:     .fill 1,0
 dp_last:   .fill 1,0
 dp_dirs:   .fill 1,0
 dp_t:      .fill 1,0
+dp_act:    .fill 1,0
+dp_pdir:   .fill 1,0
+tool_cur:  .fill 1,0
+tm_open:   .fill 1,0
+tm_sel:    .fill 1,0
+tm_now:    .fill 1,0
+tm_last:   .fill 1,0
+tm_press:  .fill 1,0
+tm_jl:     .fill 1,0
+tm_wait:   .fill 1,0
+tm_buf:    .fill 80,0
 nsp:       .fill 1,0
 sp_ptr:    .fill 2,0
 sp_scan:   .fill 1,0
