@@ -17,6 +17,7 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
     var _s = proj.sfx[snd_sel];
     var _title = "Sound " + string(snd_sel + 1) + "  -  SID " + global.VOICE_NAMES[clamp(_s.voice, 0, 1)];
     if (_s.kind == 1) { _title = "Sound " + string(snd_sel + 1) + "  -  sample, played through the SID volume ($D418)"; }
+    if (_s.kind == 2) { _title = "Sound " + string(snd_sel + 1) + "  -  patch, played register by register on the SID"; }
     ui_panel(_cx1, _y1, _x2, _y2, _title);
     if (keyboard_check_pressed(vk_space) && ui_focus == "" && ui_can_input() && !keyboard_check(vk_control)) { sfx_preview_play(_s); }
 
@@ -30,6 +31,12 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
     if (_s.kind == 1)
     {
         sound_sample_panel(_s, _ax, _bx, _colw, _y1, _y2);
+        sound_listen_draw(_s, _qx, _colw, _y1, _y2);
+        return;
+    }
+    if (_s.kind == 2)
+    {
+        sound_patch_panel(_s, _ax, _bx, _colw, _y1, _y2);
         sound_listen_draw(_s, _qx, _colw, _y1, _y2);
         return;
     }
@@ -279,6 +286,7 @@ function sound_list_draw(_x1, _y1, _x2, _y2)
             _sub = "Sample  -  no WAV yet";
             if (_f.smp != "") { _sub = "Sample  -  " + string(digi_bytes(_f)) + " bytes"; }
         }
+        if (_f.kind == 2) { _sub = "Patch  -  " + patch_key_name(_f.patch.key) + "  -  " + string(patch_bytes(_f.patch)) + " bytes"; }
         ui_text(_ix1 + 14, _ry + 33, ui_text_fit(_sub, global.f_small, _ix2 - _ix1 - 76), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
         if (ui_button(_id + "_play", _ix2 - 56, _ry + 8, 48, 30, "Play", "Play|Hear this sound.", BTN_GHOST))
         {
@@ -466,12 +474,13 @@ function sound_delete(_k)
 function sound_listen_draw(_s, _qx, _colw, _y1, _y2)
 {
     var _qy = _y1 + 56;
-    // synth or sample
-    var _kw = floor((_colw - 8) / 2);
-    var _kn = ["Synth", "Sample"];
+    // synth, sample or patch
+    var _kw = floor((_colw - 16) / 3);
+    var _kn = ["Synth", "Sample", "Patch"];
     var _kh = ["Synth sound|Made on the SID's voices 1 or 2 from a waveform, envelope, slide and filter. A few bytes each.",
-               "Sampled sound|A real recording - a voice, a drum, an explosion - imported from a WAV and played the way C64 games talk: 4-bit samples written to the SID's volume register by a timer interrupt."];
-    for (var kk = 0; kk < 2; kk++)
+               "Sampled sound|A real recording - a voice, a drum, an explosion - imported from a WAV and played the way C64 games talk: 4-bit samples written to the SID's volume register by a timer interrupt.",
+               "Patch|ADAM's patch synth on the real chip: up to three oscillators with sync and ring modulation, the filter with its own envelope, a pitch envelope, two LFOs and a modulation matrix. The studio works out every SID register for every frame; the game plays them back."];
+    for (var kk = 0; kk < 3; kk++)
     {
         var _ks = BTN_GHOST;
         if (_s.kind == kk) { _ks = BTN_ACCENT; }
@@ -510,6 +519,11 @@ function sound_listen_draw(_s, _qx, _colw, _y1, _y2)
         ui_text(_qx + _colw * 0.5, _qy + _sh * 0.5, "Press Play to see the wave", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
     }
     _qy += _sh + 16;
+    if (_s.kind == 2)
+    {
+        ui_text_wrap(_qx, _qy, "A patch plays from a table of SID register changes, one entry a frame - only the registers that change are stored. Patches can't be music instruments: they take whole voices and the filter while they play.", global.TH.text_faint, _colw, global.f_small, 1);
+        return;
+    }
     if (_s.kind == 1)
     {
         ui_text_wrap(_qx, _qy, "Samples play through the SID's master volume, so while one plays the music and sound effects rise and fall with it - as in every C64 game that talks. The old 6581 SID (VICE's default, and the C64 Ultimate in 6581 mode) plays them loud; the newer 8580 only very quietly.", global.TH.text_faint, _colw, global.f_small, 1);

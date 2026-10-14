@@ -438,6 +438,7 @@ function engine_codegen(_p)
     sid_emit(L, _p);
     music_emit(L, _p);
     digi_emit(L, _p);
+    patch_emit(L, _p);
 
     // sprite and charset blobs (copied to $E000 / $F000 at start)
     array_push(L, "spr_src:");

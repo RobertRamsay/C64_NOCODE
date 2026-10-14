@@ -69,6 +69,9 @@ function live_measure()
         // the samples' data counts as sound too
         var _dgs = live_label(_lab, "dig_start", _org);
         var _dgn = live_label(_lab, "dig_end", _dgs) - _dgs;
+        // ... and so do the patches' register tables
+        var _pts = live_label(_lab, "pat_start", _org);
+        _dgn += live_label(_lab, "pat_end", _pts) - _pts;
         live_seg_sound += _dgn;
         var _ms = live_label(_lab, "mus_start", _org);
         live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;

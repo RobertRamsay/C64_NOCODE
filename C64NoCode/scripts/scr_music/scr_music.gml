@@ -208,10 +208,10 @@ function music_inst_ids()
 {
     var _out = [];
     for (var i = 0; i < array_length(global.MUS_INST); i++) { array_push(_out, i); }
-    // samples play through the volume register, not a voice: they can't be music instruments
+    // samples play through the volume register and patches take whole voices: neither can be a music instrument
     for (var k = 0; k < array_length(proj.sfx); k++)
     {
-        if (proj.sfx[k].kind != 1) { array_push(_out, MUS_INST_USER + k); }
+        if (proj.sfx[k].kind == 0) { array_push(_out, MUS_INST_USER + k); }
     }
     return _out;
 }
@@ -435,9 +435,9 @@ function music_inst_compiled(_id, _drum)
     {
         var _k = clamp(_id - MUS_INST_USER, 0, array_length(proj.sfx) - 1);
         var _s = proj.sfx[_k];
-        if (_s.kind == 1)
+        if (_s.kind != 0)
         {
-            // a sound that became a sample: the nearest built-in instrument plays instead
+            // a sound that became a sample or a patch: the nearest built-in instrument plays instead
             if (_drum) { return music_inst_compiled(1, true); }
             return music_inst_compiled(10, false);
         }
@@ -955,7 +955,10 @@ function music_emit(L, _p)
     array_push(L, "mv_quiet:", " lda #0", " sta mv_on,x", " sta mv_act,x", " jsr mv_busy", " bne mvq_r", " sta $d404,x");
     array_push(L, "mvq_r:", " rts");
     // a sound effect has voice X while sfx_update counts it down (voice 3 is never used by them)
-    array_push(L, "mv_busy:", " cpx #14", " beq mvb_no", " lda sv_t,x", " rts", "mvb_no:", " lda #0", " rts");
+    // ... and a patch sound has the voices in pt_vm while it plays (voice 3 too, when it needs it)
+    if (patch_any(_p)) { array_push(L, "mv_busy:", " lda pt_on", " beq mvb_s", " lda pt_vbit,x", " and pt_vm", " bne mvb_r"); }
+    else { array_push(L, "mv_busy:"); }
+    array_push(L, "mvb_s:", " cpx #14", " beq mvb_no", " lda sv_t,x", "mvb_r:", " rts", "mvb_no:", " lda #0", " rts");
     // (X and Y are kept by all three)
     array_push(L, "mus_level:", " sty m_sy", " tay", " lda mus_lvl,y", " ldy m_sy", " cmp #$ff", " beq mus_stop", " sta m_t1", " lda m_on", " beq ml_go");
     array_push(L, " lda m_t1", " cmp m_song", " bne ml_go", " rts", "ml_go:", " lda m_t1");

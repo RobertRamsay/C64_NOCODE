@@ -499,6 +499,7 @@ function codegen_project(_p)
     // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
     music_emit(L, _p);
     digi_emit(L, _p);
+    patch_emit(L, _p);
 
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }

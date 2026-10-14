@@ -25,6 +25,7 @@ function sid_defs_init()
     global.SID_DR_MS  = [6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000];
     // ADSR rate counter periods in clock cycles (one envelope step each period)
     global.SID_RATE = [9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251];
+    patch_defs_init();
 }
 
 function sfx_new(_name)
@@ -57,7 +58,9 @@ function sfx_new(_name)
         bits : 4,
         gain : 100,
         trim_a : 0,
-        trim_b : 1000
+        trim_b : 1000,
+        // kind 2: a patch (scr_patch) - up to 3 oscillators, played frame by frame on the SID
+        patch : patch_new()
     };
 }
 
@@ -119,7 +122,8 @@ function sfx_list_from_loaded(_raw)
                 _s.smp_file = "";
                 _s.kind = 0;
             }
-            _s.kind = clamp(floor(_s.kind), 0, 1);
+            _s.kind = clamp(floor(_s.kind), 0, 2);
+            _s.patch = patch_from_loaded(_s.patch);
             _s.rate = clamp(floor(_s.rate), 1000, 16000);
             _s.bits = clamp(floor(_s.bits), 2, 4);
             _s.gain = clamp(_s.gain, 10, 300);
@@ -188,6 +192,7 @@ function sid_cutoff_hz(_c)
 function sfx_seconds(_s)
 {
     if (_s.kind == 1) { return sfx_digi_seconds(_s); }
+    if (_s.kind == 2) { return patch_seconds(_s.patch); }
     var _gate = max(1, _s.len - 1) / sid_fps();
     var _rel = global.SID_DR_MS[clamp(_s.rel, 0, 15)] / 1000;
     return min(_gate + _rel + 0.02, 4);
@@ -199,6 +204,7 @@ function sfx_seconds(_s)
 function sfx_render(_s)
 {
     if (_s.kind == 1) { return sfx_digi_render(_s); }
+    if (_s.kind == 2) { return patch_render(_s.patch); }
     var _rate = SFX_PREVIEW_RATE;
     var _clock = sid_clock();
     var _fps = sid_fps();
@@ -383,6 +389,7 @@ function sfx_render(_s)
 function sfx_key(_s)
 {
     if (_s.kind == 1) { return "digi|" + digi_key(_s); }
+    if (_s.kind == 2) { return "patch|" + json_stringify(_s.patch) + "|" + string(sid_fps()); }
     return string(_s.wave) + "," + string(_s.pitch) + "," + string(_s.sweep) + "," + string(_s.len) + ","
          + string(_s.atk) + string(_s.dec) + string(_s.sus) + string(_s.rel) + "," + string(_s.pw) + "," + string(_s.pws) + ","
          + string(_s.fmode) + "," + string(_s.fcut) + "," + string(_s.fres) + "," + string(_s.fsweep) + ","
@@ -450,7 +457,9 @@ function sid_emit(L, _p)
     array_push(L, "SFX_N = " + string(_ns));
     array_push(L, "sid_start:");
     var _dg = digi_any(_p);
+    var _pt = patch_any(_p);
     array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sid_mode", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418");
+    if (_pt) { array_push(L, " lda #0", " sta pt_on"); }
     if (_dg)
     {
         // samples: CIA 2 timer A interrupts off for now, and the NMI pointed at the sample player
@@ -467,6 +476,13 @@ function sid_emit(L, _p)
     array_push(L, "play_sfx:", " cmp #SFX_N", " bcc sidp_go", " rts");
     array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay");
     if (_dg) { array_push(L, " lda sfxt_dg,y", " bne sidp_dg"); }
+    if (_pt)
+    {
+        array_push(L, " lda sfxt_pt,y", " beq sidp_sy", " jmp sidp_pt", "sidp_sy:");
+        // a synth sound stops a patch that uses its voice, or the filter it is about to take
+        array_push(L, " ldx sfxt_v,y", " lda pt_on", " beq sidp_k", " lda sfxt_fm,y", " bne sidp_ks", " lda sid_vbit,x", " and pt_vm", " beq sidp_k");
+        array_push(L, "sidp_ks:", " jsr pt_stop", "sidp_k:");
+    }
     array_push(L, " ldx sfxt_v,y");
     array_push(L, " lda #0", " sta sv_t,x", " sta $d404,x", " sta $d400,x", " sta sv_step,x");
     array_push(L, " lda sfxt_ad,y", " sta $d405,x", " lda sfxt_sr,y", " sta $d406,x");
@@ -487,7 +503,8 @@ function sid_emit(L, _p)
     array_push(L, " clc", " adc flt_c", " bcc sidu_fs", " lda #255", " jmp sidu_fs");
     array_push(L, "sidu_fn:", " clc", " adc flt_c", " bcs sidu_fs", " lda #0");
     array_push(L, "sidu_fs:", " sta flt_c", " sta $d416");
-    array_push(L, "sidu_r:", " jsr mus_update", " ldx sid_sx", " ldy sid_sy", " rts");
+    if (_pt) { array_push(L, "sidu_r:", " jsr pt_update", " jsr mus_update", " ldx sid_sx", " ldy sid_sy", " rts"); }
+    else { array_push(L, "sidu_r:", " jsr mus_update", " ldx sid_sx", " ldy sid_sy", " rts"); }
     // one voice: pitch slide (clamped), arpeggio, pulse width sweep, gate off at the end
     array_push(L, "sidu_v:", " lda sv_t,x", " bne sidu_on", " rts");
     array_push(L, "sidu_on:", " lda sv_sw,x", " beq sidu_ps", " bmi sidu_sn");
@@ -511,7 +528,41 @@ function sid_emit(L, _p)
     array_push(L, "sidu_x:", " rts");
     array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b");
     if (_dg) { array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda sid_mode", " ora #$0f", " sta $d418"); }
+    if (_pt) { array_push(L, " jsr pt_stop"); }
     array_push(L, " rts");
+    if (_pt)
+    {
+        // ---- patch sounds: a table of SID register changes, one entry a frame (scr_patch) ----
+        // a patch (Y = sound): stop the one playing, take its voices from the sound effects, start its table
+        array_push(L, "sidp_pt:", " jsr pt_stop", " lda #0", " sta flt_t", " lda sfxt_pvm,y", " sta pt_vm");
+        array_push(L, " and #1", " beq ptp_1", " lda #0", " sta sv_t", " sta $d404");
+        array_push(L, "ptp_1:", " lda pt_vm", " and #2", " beq ptp_2", " lda #0", " sta sv_t+7", " sta $d40b");
+        array_push(L, "ptp_2:", " lda pt_vm", " and #4", " beq ptp_3", " lda #0", " sta $d412");
+        array_push(L, "ptp_3:", " lda sfxt_pal,y", " sta pt_a+1", " lda sfxt_pah,y", " sta pt_a+2", " lda #0", " sta pt_wait", " lda #1", " sta pt_on");
+        array_push(L, " ldx sid_sx", " ldy sid_sy", " rts");
+        // pt_stop: silence the patch's voices, give the filter and volume back (only A is used)
+        array_push(L, "pt_stop:", " lda pt_on", " beq pts_x", " lda #0", " sta pt_on");
+        array_push(L, " lda pt_vm", " and #1", " beq pts_1", " lda #0", " sta $d404");
+        array_push(L, "pts_1:", " lda pt_vm", " and #2", " beq pts_2", " lda #0", " sta $d40b");
+        array_push(L, "pts_2:", " lda pt_vm", " and #4", " beq pts_3", " lda #0", " sta $d412");
+        array_push(L, "pts_3:", " lda sid_d417", " sta $d417", " lda sid_mode", " ora #$0f", " sta $d418");
+        array_push(L, "pts_x:", " rts");
+        // pt_update, once a frame: read the next entry - end, n idle frames, or the registers that change
+        array_push(L, "pt_update:", " lda pt_on", " beq ptu_x", " lda pt_wait", " beq ptu_rd", " dec pt_wait");
+        array_push(L, "ptu_x:", " rts");
+        array_push(L, "ptu_rd:", " jsr pt_rd", " bpl ptu_ne", " jmp pt_stop");
+        array_push(L, "ptu_ne:", " cmp #$40", " bcc ptu_g", " and #$3f", " sec", " sbc #1", " sta pt_wait", " rts");
+        // four groups ($D400, $D407, $D40E, $D415): a mask of which of its 7 registers follow
+        array_push(L, "ptu_g:", " sta pt_gm", " ldx #0");
+        array_push(L, "ptu_gl:", " lsr pt_gm", " bcc ptu_gs", " jsr pt_rd", " sta pt_mk", " ldy #7");
+        array_push(L, "ptu_rl:", " lsr pt_mk", " bcc ptu_rs", " jsr pt_rd", " sta $d400,x");
+        array_push(L, "ptu_rs:", " inx", " dey", " bne ptu_rl", " beq ptu_gn");
+        array_push(L, "ptu_gs:", " txa", " clc", " adc #7", " tax");
+        array_push(L, "ptu_gn:", " cpx #28", " bcc ptu_gl", " rts");
+        array_push(L, "pt_rd:");
+        array_push(L, "pt_a:", " lda $1000", " inc pt_a+1", " bne ptr_x", " inc pt_a+2");
+        array_push(L, "ptr_x:", " ora #0", " rts");
+    }
     if (_dg)
     {
         // the sample player: one NMI per sample, the high then the low nibble of each byte,
@@ -571,6 +622,32 @@ function sid_emit(L, _p)
         var _tn = ["sfxt_dg", "sfxt_dal", "sfxt_dah", "sfxt_dnl", "sfxt_dnh", "sfxt_dtl", "sfxt_dth"];
         for (var q = 0; q < 7; q++) { array_push(L, _tn[q] + ":", " .byte " + string_join_ext(",", _t[q])); }
         array_push(L, "dg_nib:", " .fill 1,0", "dg_cl:", " .fill 1,0", "dg_ch:", " .fill 1,0");
+    }
+    if (_pt)
+    {
+        // per sound: is it a patch, where its table is, which voices it uses
+        var _pk = [[], [], [], []];
+        for (var e = 0; e < _ns; e++)
+        {
+            var _ei = min(e, array_length(_p.sfx) - 1);
+            var _se = _p.sfx[_ei];
+            if (_se.kind == 2)
+            {
+                array_push(_pk[0], "1");
+                array_push(_pk[1], "<spat_" + string(_ei));
+                array_push(_pk[2], ">spat_" + string(_ei));
+                array_push(_pk[3], string(patch_voice_mask(_se.patch)));
+            }
+            else
+            {
+                for (var z2 = 0; z2 < 4; z2++) { array_push(_pk[z2], "0"); }
+            }
+        }
+        var _pn = ["sfxt_pt", "sfxt_pal", "sfxt_pah", "sfxt_pvm"];
+        for (var q2 = 0; q2 < 4; q2++) { array_push(L, _pn[q2] + ":", " .byte " + string_join_ext(",", _pk[q2])); }
+        // the bit of voice X (0, 7, 14) in pt_vm, for the music driver
+        array_push(L, "pt_vbit:", " .byte 1,0,0,0,0,0,0,2,0,0,0,0,0,0,4");
+        array_push(L, "pt_on:", " .fill 1,0", "pt_vm:", " .fill 1,0", "pt_wait:", " .fill 1,0", "pt_gm:", " .fill 1,0", "pt_mk:", " .fill 1,0");
     }
     array_push(L, "sid_end:");
 }
