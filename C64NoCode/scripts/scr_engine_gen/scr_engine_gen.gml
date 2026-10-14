@@ -437,6 +437,7 @@ function engine_codegen(_p)
     // SID sound player + tables (shared with single screen games, scr_sid)
     sid_emit(L, _p);
     music_emit(L, _p);
+    digi_emit(L, _p);
 
     // sprite and charset blobs (copied to $E000 / $F000 at start)
     array_push(L, "spr_src:");
@@ -585,7 +586,7 @@ function build_engine_prg(_path)
     if (_end > 32768)
     {
         build_ok = false;
-        build_msg = "Build failed - the game data is too big (ends at $" + string_upper(dec_to_hex(_end)) + ", limit $8000). Make maps smaller or use fewer levels.";
+        build_msg = "Build failed - the game data is too big (ends at $" + string_upper(dec_to_hex(_end)) + ", limit $8000). Make maps smaller, use fewer levels, or make samples shorter or their rate lower.";
         return false;
     }
     var _b = buffer_create(array_length(_res.bytes) + 2, buffer_fixed, 1);

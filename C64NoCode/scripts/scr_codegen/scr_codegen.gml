@@ -498,6 +498,7 @@ function codegen_project(_p)
     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
     // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
     music_emit(L, _p);
+    digi_emit(L, _p);
 
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }

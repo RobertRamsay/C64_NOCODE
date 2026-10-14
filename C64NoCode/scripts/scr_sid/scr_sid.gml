@@ -10,6 +10,7 @@
 
 function sid_defs_init()
 {
+    digi_defs_init();
     global.WAVE_NAMES = ["Triangle (soft)", "Sawtooth (buzzy)", "Pulse (classic)", "Noise (crunchy)",
                          "Pulse + triangle", "Pulse + sawtooth", "Sawtooth + triangle"];
     global.WAVE_SHORT = ["Triangle", "Sawtooth", "Pulse", "Noise", "Pulse+tri", "Pulse+saw", "Saw+tri"];
@@ -45,7 +46,18 @@ function sfx_new(_name)
         fsweep : 0,
         arp : false,
         arp1 : 4,
-        arp2 : 7
+        arp2 : 7,
+        // kind 1: a sample imported from a WAV (scr_digi), played through $D418
+        kind : 0,
+        smp : "",
+        smp_rate : 0,
+        smp_len : 0,
+        smp_file : "",
+        rate : 4000,
+        bits : 4,
+        gain : 100,
+        trim_a : 0,
+        trim_b : 1000
     };
 }
 
@@ -101,6 +113,18 @@ function sfx_list_from_loaded(_raw)
             _s.fmode = clamp(floor(_s.fmode), 0, 3);
             if (!is_numeric(_s.group)) { _s.group = -1; }
             if (!is_bool(_s.arp)) { _s.arp = (_s.arp == 1); }
+            if (!is_string(_s.smp) || !is_string(_s.smp_file) || !is_numeric(_s.kind))
+            {
+                _s.smp = "";
+                _s.smp_file = "";
+                _s.kind = 0;
+            }
+            _s.kind = clamp(floor(_s.kind), 0, 1);
+            _s.rate = clamp(floor(_s.rate), 1000, 16000);
+            _s.bits = clamp(floor(_s.bits), 2, 4);
+            _s.gain = clamp(_s.gain, 10, 300);
+            _s.trim_a = clamp(_s.trim_a, 0, 990);
+            _s.trim_b = clamp(_s.trim_b, _s.trim_a + 10, 1000);
             array_push(_out, _s);
         }
     }
@@ -163,6 +187,7 @@ function sid_cutoff_hz(_c)
 /// Seconds the preview of _s lasts (gate time + release, capped)
 function sfx_seconds(_s)
 {
+    if (_s.kind == 1) { return sfx_digi_seconds(_s); }
     var _gate = max(1, _s.len - 1) / sid_fps();
     var _rel = global.SID_DR_MS[clamp(_s.rel, 0, 15)] / 1000;
     return min(_gate + _rel + 0.02, 4);
@@ -173,6 +198,7 @@ function sfx_seconds(_s)
 /// Returns a buffer of signed 16-bit samples at SFX_PREVIEW_RATE (caller deletes it).
 function sfx_render(_s)
 {
+    if (_s.kind == 1) { return sfx_digi_render(_s); }
     var _rate = SFX_PREVIEW_RATE;
     var _clock = sid_clock();
     var _fps = sid_fps();
@@ -356,6 +382,7 @@ function sfx_render(_s)
 /// Stable text key of every setting that changes the sound (to know when a render is stale)
 function sfx_key(_s)
 {
+    if (_s.kind == 1) { return "digi|" + digi_key(_s); }
     return string(_s.wave) + "," + string(_s.pitch) + "," + string(_s.sweep) + "," + string(_s.len) + ","
          + string(_s.atk) + string(_s.dec) + string(_s.sus) + string(_s.rel) + "," + string(_s.pw) + "," + string(_s.pws) + ","
          + string(_s.fmode) + "," + string(_s.fcut) + "," + string(_s.fres) + "," + string(_s.fsweep) + ","
@@ -422,16 +449,32 @@ function sid_emit(L, _p)
     array_push(L, "; ---------------- SID sound player (voices 1 and 2; the music driver has all 3 when they are free) ----------------");
     array_push(L, "SFX_N = " + string(_ns));
     array_push(L, "sid_start:");
-    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418", " rts");
+    var _dg = digi_any(_p);
+    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sid_mode", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418");
+    if (_dg)
+    {
+        // samples: CIA 2 timer A interrupts off for now, and the NMI pointed at the sample player
+        // (through $0318 when the KERNAL is in, straight from $FFFA when it is banked out)
+        array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda $dd0d");
+        array_push(L, " lda #<sid_nmi", " sta $0318", " sta $fffa", " lda #>sid_nmi", " sta $0319", " sta $fffb");
+        // a sample (Y = sound): stop the one playing, point the NMI at the new one, start the timer
+        array_push(L, " rts", "sidp_dg:", " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " sta dg_nib");
+        array_push(L, " lda sfxt_dal,y", " sta dgn_a1+1", " sta dgn_a2+1", " lda sfxt_dah,y", " sta dgn_a1+2", " sta dgn_a2+2");
+        array_push(L, " lda sfxt_dnl,y", " sta dg_cl", " lda sfxt_dnh,y", " sta dg_ch", " lda sfxt_dtl,y", " sta $dd04", " lda sfxt_dth,y", " sta $dd05");
+        array_push(L, " lda $dd0d", " lda #$81", " sta $dd0d", " lda #$11", " sta $dd0e", " ldx sid_sx", " ldy sid_sy");
+    }
+    array_push(L, " rts");
     array_push(L, "play_sfx:", " cmp #SFX_N", " bcc sidp_go", " rts");
-    array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay", " ldx sfxt_v,y");
+    array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay");
+    if (_dg) { array_push(L, " lda sfxt_dg,y", " bne sidp_dg"); }
+    array_push(L, " ldx sfxt_v,y");
     array_push(L, " lda #0", " sta sv_t,x", " sta $d404,x", " sta $d400,x", " sta sv_step,x");
     array_push(L, " lda sfxt_ad,y", " sta $d405,x", " lda sfxt_sr,y", " sta $d406,x");
     array_push(L, " lda sfxt_pwl,y", " sta sv_pwl,x", " sta $d402,x", " lda sfxt_pwh,y", " sta sv_pwh,x", " sta $d403,x");
     array_push(L, " lda sfxt_pws,y", " sta sv_pws,x", " lda sfxt_sw,y", " sta sv_sw,x");
     array_push(L, " lda sfxt_f,y", " sta sv_fh,x", " sta $d401,x", " tya", " sta sv_snd,x");
     // filter: a filtered sound takes the filter; an unfiltered one takes its voice out of it
-    array_push(L, " lda sfxt_fm,y", " beq sidp_nf", " sta $d418", " lda sfxt_fr,y", " ora sid_vbit,x", " sta sid_d417", " sta $d417");
+    array_push(L, " lda sfxt_fm,y", " beq sidp_nf", " sta $d418", " and #$f0", " sta sid_mode", " lda sfxt_fr,y", " ora sid_vbit,x", " sta sid_d417", " sta $d417");
     array_push(L, " lda sfxt_fc,y", " sta flt_c", " sta $d416", " lda #0", " sta $d415", " lda sfxt_fsw,y", " sta flt_s");
     array_push(L, " lda sfxt_len,y", " clc", " adc #25", " sta flt_t", " jmp sidp_g");
     array_push(L, "sidp_nf:", " lda sid_d417", " and sid_vmask,x", " sta sid_d417", " sta $d417");
@@ -466,7 +509,24 @@ function sid_emit(L, _p)
     // the sound is done: its voice leaves the filter (the music gets it back clean)
     array_push(L, " lda sid_d417", " and sid_vmask,x", " sta sid_d417", " sta $d417");
     array_push(L, "sidu_x:", " rts");
-    array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b", " rts");
+    array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b");
+    if (_dg) { array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda sid_mode", " ora #$0f", " sta $d418"); }
+    array_push(L, " rts");
+    if (_dg)
+    {
+        // the sample player: one NMI per sample, the high then the low nibble of each byte,
+        // written to the SID volume (the filter mode bits in the top nibble are kept)
+        array_push(L, "sid_nmi:", " pha", " lda $dd0d", " lda dg_nib", " bne dgn_lo", " inc dg_nib");
+        array_push(L, "dgn_a1:", " lda $1000", " lsr", " lsr", " lsr", " lsr", " ora sid_mode", " sta $d418", " pla", " rti");
+        array_push(L, "dgn_lo:", " lda #0", " sta dg_nib");
+        array_push(L, "dgn_a2:", " lda $1000", " and #$0f", " ora sid_mode", " sta $d418");
+        array_push(L, " inc dgn_a1+1", " inc dgn_a2+1", " bne dgn_c", " inc dgn_a1+2", " inc dgn_a2+2");
+        array_push(L, "dgn_c:", " lda dg_cl", " bne dgn_d", " dec dg_ch");
+        array_push(L, "dgn_d:", " dec dg_cl", " lda dg_cl", " ora dg_ch", " bne dgn_x");
+        // the end: timer off, full volume back
+        array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda sid_mode", " ora #$0f", " sta $d418");
+        array_push(L, "dgn_x:", " pla", " rti");
+    }
 
     // rnd: a random byte in A (16-bit LFSR mixed with the raster line; X and Y kept).
     // The SID's voice 3 noise ($D41B) can't be used: voice 3 plays music.
@@ -481,6 +541,36 @@ function sid_emit(L, _p)
     var _vars = ["sv_t", "sv_fh", "sv_sw", "sv_w", "sv_snd", "sv_step", "sv_pwl", "sv_pwh", "sv_pws"];
     for (var k = 0; k < array_length(_vars); k++) { array_push(L, _vars[k] + ":", " .fill 8,0"); }
     array_push(L, "flt_c:", " .fill 1,0", "flt_s:", " .fill 1,0", "flt_t:", " .fill 1,0", "sid_d417:", " .fill 1,0");
-    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0", "rnd_s:", " .byte $5a,$c3");
+    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0", "rnd_s:", " .byte $5a,$c3", "sid_mode:", " .fill 1,0");
+    if (_dg)
+    {
+        // per sound: is it a sample, where its data is, how many bytes, the CIA timer value
+        var _t = [[], [], [], [], [], [], []];
+        for (var d = 0; d < _ns; d++)
+        {
+            var _di = min(d, array_length(_p.sfx) - 1);
+            var _sd = _p.sfx[_di];
+            if (_sd.kind == 1)
+            {
+                var _lv = digi_levels(_sd);
+                var _nb = max(1, array_length(_lv.nib) div 2);
+                var _lab = "sdig_" + string(_di);
+                array_push(_t[0], "1");
+                array_push(_t[1], "<" + _lab);
+                array_push(_t[2], ">" + _lab);
+                array_push(_t[3], string(_nb & 255));
+                array_push(_t[4], string(_nb >> 8));
+                array_push(_t[5], string(_lv.latch & 255));
+                array_push(_t[6], string(_lv.latch >> 8));
+            }
+            else
+            {
+                for (var z = 0; z < 7; z++) { array_push(_t[z], "0"); }
+            }
+        }
+        var _tn = ["sfxt_dg", "sfxt_dal", "sfxt_dah", "sfxt_dnl", "sfxt_dnh", "sfxt_dtl", "sfxt_dth"];
+        for (var q = 0; q < 7; q++) { array_push(L, _tn[q] + ":", " .byte " + string_join_ext(",", _t[q])); }
+        array_push(L, "dg_nib:", " .fill 1,0", "dg_cl:", " .fill 1,0", "dg_ch:", " .fill 1,0");
+    }
     array_push(L, "sid_end:");
 }

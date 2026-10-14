@@ -15,7 +15,9 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
 
     var _cx1 = _x1 + _lw + 12;
     var _s = proj.sfx[snd_sel];
-    ui_panel(_cx1, _y1, _x2, _y2, "Sound " + string(snd_sel + 1) + "  -  SID " + global.VOICE_NAMES[clamp(_s.voice, 0, 1)]);
+    var _title = "Sound " + string(snd_sel + 1) + "  -  SID " + global.VOICE_NAMES[clamp(_s.voice, 0, 1)];
+    if (_s.kind == 1) { _title = "Sound " + string(snd_sel + 1) + "  -  sample, played through the SID volume ($D418)"; }
+    ui_panel(_cx1, _y1, _x2, _y2, _title);
     if (keyboard_check_pressed(vk_space) && ui_focus == "" && ui_can_input() && !keyboard_check(vk_control)) { sfx_preview_play(_s); }
 
     var _gap = 24;
@@ -25,6 +27,12 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
     var _qx = _bx + _colw + _gap;
     var _half = floor((_colw - 12) / 2);
     var _third = floor((_colw - 16) / 3);
+    if (_s.kind == 1)
+    {
+        sound_sample_panel(_s, _ax, _bx, _colw, _y1, _y2);
+        sound_listen_draw(_s, _qx, _colw, _y1, _y2);
+        return;
+    }
 
     // ---------------- column 1: the tone ----------------
     var _y = _y1 + 56;
@@ -160,56 +168,7 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
         ui_text(_bx + _colw * 0.5, _by + 20, "Filter is off - pick a filter type above", global.TH.text_dim, fa_center, fa_middle, global.f_small, 1);
     }
 
-    // ---------------- column 3: listen + presets ----------------
-    var _qy = _y1 + 56;
-    if (ui_button("snd_preview", _qx, _qy, _colw, 44, "Play sound  (Space)", "Play|Hear the sound as the C64 plays it: the same frame-by-frame steps as the game, the SID's real envelope rates, noise and filter. Shortcut: Space.", BTN_ACCENT))
-    {
-        sfx_preview_play(_s);
-    }
-    _qy += 56;
-    var _sh = 90;
-    ui_inset(_qx, _qy, _qx + _colw, _qy + _sh, 10);
-    ui_register("snd_scope", _qx, _qy, _qx + _colw, _qy + _sh, "Scope|The first quarter second of the sound's wave, as the preview made it.");
-    if (preview_key == sfx_key(_s) && array_length(preview_scope) > 1)
-    {
-        var _cy = _qy + _sh * 0.5;
-        var _n = array_length(preview_scope);
-        var _px = _qx + 6;
-        var _py = _cy - preview_scope[0] * (_sh * 0.45);
-        for (var sp = 1; sp < _n; sp++)
-        {
-            var _nx = _qx + 6 + sp / (_n - 1) * (_colw - 12);
-            var _ny = _cy - preview_scope[sp] * (_sh * 0.45);
-            draw_line_width_colour(_px, _py, _nx, _ny, 2, global.TH.accent2, global.TH.accent2);
-            _px = _nx;
-            _py = _ny;
-        }
-    }
-    else
-    {
-        ui_text(_qx + _colw * 0.5, _qy + _sh * 0.5, "Press Play to see the wave", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
-    }
-    _qy += _sh + 16;
-    ui_heading(_qx, _qy, "Start from a preset");
-    _qy += 20;
-    var _pw2 = floor((_colw - 8) / 2);
-    var _np = array_length(global.SFX_PRESET_NAMES);
-    for (var p = 0; p < _np; p++)
-    {
-        var _pbx = _qx + (p mod 2) * (_pw2 + 8);
-        var _pby = _qy + (p div 2) * 38;
-        if (ui_button("snd_preset_" + string(p), _pbx, _pby, _pw2, 32, global.SFX_PRESET_NAMES[p], global.SFX_PRESET_NAMES[p] + " preset|Replaces this sound's settings with a ready-made " + string_lower(global.SFX_PRESET_NAMES[p]) + " sound and plays it. The name, folder and voice stay.", BTN_NORMAL))
-        {
-            undo_mark("sndpreset" + string(current_time));
-            sfx_apply_preset(_s, p);
-            sfx_preview_play(_s);
-        }
-    }
-    _qy += ceil(_np / 2) * 38 + 8;
-    if (_qy < _y2 - 60)
-    {
-        ui_text_wrap(_qx, _qy, "Sounds play on SID voices 1 and 2, so two can sound at once. The preview follows the SID closely; the real chip has its own character - always check in VICE or on your C64.", global.TH.text_faint, _colw, global.f_small, 1);
-    }
+    sound_listen_draw(_s, _qx, _colw, _y1, _y2);
 }
 
 /// The Sound page's left panel: sounds in folders, scrolling, with add / copy / delete
@@ -315,6 +274,11 @@ function sound_list_draw(_x1, _y1, _x2, _y2)
         ui_text(_ix1 + 14, _ry + 15, string(_i + 1) + ". " + ui_text_fit(_f.name, global.f_bold, _ix2 - _ix1 - 100), global.TH.text, fa_left, fa_middle, global.f_bold, 1);
         var _sub = global.WAVE_SHORT[clamp(_f.wave, 0, array_length(global.WAVE_SHORT) - 1)] + "  -  voice " + string(_f.voice + 1);
         if (_f.fmode > 0) { _sub += "  -  filter"; }
+        if (_f.kind == 1)
+        {
+            _sub = "Sample  -  no WAV yet";
+            if (_f.smp != "") { _sub = "Sample  -  " + string(digi_bytes(_f)) + " bytes"; }
+        }
         ui_text(_ix1 + 14, _ry + 33, ui_text_fit(_sub, global.f_small, _ix2 - _ix1 - 76), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
         if (ui_button(_id + "_play", _ix2 - 56, _ry + 8, 48, 30, "Play", "Play|Hear this sound.", BTN_GHOST))
         {
@@ -495,4 +459,194 @@ function sound_delete(_k)
     music_sound_deleted(_k);
     snd_sel = clamp(_k, 0, array_length(proj.sfx) - 1);
     toast("Deleted " + _name, 0);
+}
+
+
+/// Synth or sample switch, Play, the scope, and the presets (synth sounds) - the Sound page's right column
+function sound_listen_draw(_s, _qx, _colw, _y1, _y2)
+{
+    var _qy = _y1 + 56;
+    // synth or sample
+    var _kw = floor((_colw - 8) / 2);
+    var _kn = ["Synth", "Sample"];
+    var _kh = ["Synth sound|Made on the SID's voices 1 or 2 from a waveform, envelope, slide and filter. A few bytes each.",
+               "Sampled sound|A real recording - a voice, a drum, an explosion - imported from a WAV and played the way C64 games talk: 4-bit samples written to the SID's volume register by a timer interrupt."];
+    for (var kk = 0; kk < 2; kk++)
+    {
+        var _ks = BTN_GHOST;
+        if (_s.kind == kk) { _ks = BTN_ACCENT; }
+        if (ui_button("snd_kind_" + string(kk), _qx + kk * (_kw + 8), _qy, _kw, 32, _kn[kk], _kh[kk], _ks) && _s.kind != kk)
+        {
+            sfx_preview_stop();
+            set_val(_s, "kind", kk, "sndkind" + string(current_time));
+        }
+    }
+    _qy += 44;
+    if (ui_button("snd_preview", _qx, _qy, _colw, 44, "Play sound  (Space)", "Play|Hear the sound as the C64 plays it: the same frame-by-frame steps as the game, the SID's real envelope rates, noise and filter. Shortcut: Space.", BTN_ACCENT))
+    {
+        sfx_preview_play(_s);
+    }
+    _qy += 56;
+    var _sh = 90;
+    ui_inset(_qx, _qy, _qx + _colw, _qy + _sh, 10);
+    ui_register("snd_scope", _qx, _qy, _qx + _colw, _qy + _sh, "Scope|The first quarter second of the sound's wave, as the preview made it.");
+    if (preview_key == sfx_key(_s) && array_length(preview_scope) > 1)
+    {
+        var _cy = _qy + _sh * 0.5;
+        var _n = array_length(preview_scope);
+        var _px = _qx + 6;
+        var _py = _cy - preview_scope[0] * (_sh * 0.45);
+        for (var sp = 1; sp < _n; sp++)
+        {
+            var _nx = _qx + 6 + sp / (_n - 1) * (_colw - 12);
+            var _ny = _cy - preview_scope[sp] * (_sh * 0.45);
+            draw_line_width_colour(_px, _py, _nx, _ny, 2, global.TH.accent2, global.TH.accent2);
+            _px = _nx;
+            _py = _ny;
+        }
+    }
+    else
+    {
+        ui_text(_qx + _colw * 0.5, _qy + _sh * 0.5, "Press Play to see the wave", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
+    }
+    _qy += _sh + 16;
+    if (_s.kind == 1)
+    {
+        ui_text_wrap(_qx, _qy, "Samples play through the SID's master volume, so while one plays the music and sound effects rise and fall with it - as in every C64 game that talks. The old 6581 SID (VICE's default, and the C64 Ultimate in 6581 mode) plays them loud; the newer 8580 only very quietly.", global.TH.text_faint, _colw, global.f_small, 1);
+        return;
+    }
+    ui_heading(_qx, _qy, "Start from a preset");
+    _qy += 20;
+    var _pw2 = floor((_colw - 8) / 2);
+    var _np = array_length(global.SFX_PRESET_NAMES);
+    for (var p = 0; p < _np; p++)
+    {
+        var _pbx = _qx + (p mod 2) * (_pw2 + 8);
+        var _pby = _qy + (p div 2) * 38;
+        if (ui_button("snd_preset_" + string(p), _pbx, _pby, _pw2, 32, global.SFX_PRESET_NAMES[p], global.SFX_PRESET_NAMES[p] + " preset|Replaces this sound's settings with a ready-made " + string_lower(global.SFX_PRESET_NAMES[p]) + " sound and plays it. The name, folder and voice stay.", BTN_NORMAL))
+        {
+            undo_mark("sndpreset" + string(current_time));
+            sfx_apply_preset(_s, p);
+            sfx_preview_play(_s);
+        }
+    }
+    _qy += ceil(_np / 2) * 38 + 8;
+    if (_qy < _y2 - 60)
+    {
+        ui_text_wrap(_qx, _qy, "Sounds play on SID voices 1 and 2, so two can sound at once. The preview follows the SID closely; the real chip has its own character - always check in VICE or on your C64.", global.TH.text_faint, _colw, global.f_small, 1);
+    }
+}
+
+/// The sample controls (ADAM's sample panel for the C64): import, rate, crunch, volume, trim, waveform
+function sound_sample_panel(_s, _ax, _bx, _colw, _y1, _y2)
+{
+    var _y = _y1 + 56;
+    var _nw = floor(_colw * 0.55);
+    ui_heading(_ax, _y, "Name");
+    set_val(_s, "name", ui_textfield("snd_name", _ax, _y + 18, _nw, 32, _s.name, 16, "Sound name|Shown on the Logic page when you pick a sound to play."), "sndname");
+    ui_heading(_ax + _nw + 8, _y, "Folder");
+    var _fnames = ["(none)"];
+    for (var g = 0; g < array_length(proj.sound_groups); g++) { array_push(_fnames, proj.sound_groups[g].name); }
+    var _fg = ui_dropdown("snd_folder", _ax + _nw + 8, _y + 18, _colw - _nw - 8, 32, _fnames, clamp(_s.group + 1, 0, array_length(_fnames) - 1), "Folder|Which folder this sound is in.");
+    set_val(_s, "group", _fg - 1, "sndfolder");
+    _y += 62;
+    if (ui_button("snd_import", _ax, _y, _colw, 38, "Import WAV...", "Import sample|Loads a .WAV file (8, 16, 24 or 32-bit, mono or stereo, any rate). The first 5 seconds are kept; stereo is mixed to mono.", BTN_ACCENT))
+    {
+        var _f = get_open_filename("WAV sound|*.wav", "");
+        if (_f != "")
+        {
+            undo_mark("sndimport" + string(current_time));
+            if (sfx_import_wav(_s, _f))
+            {
+                toast("Sample imported: " + string(digi_bytes(_s)) + " bytes on the C64", 0);
+                sfx_preview_play(_s);
+            }
+            else { toast("Could not read that WAV file", 2); }
+        }
+    }
+    _y += 46;
+    if (_s.smp == "")
+    {
+        ui_text_wrap(_ax, _y, "No sample yet. Import a WAV, then choose how crunchy it should sound on the C64.", global.TH.text_dim, _colw, global.f_body, 1);
+        return;
+    }
+    ui_text(_ax, _y, ui_text_fit(_s.smp_file + "  -  " + string_format(_s.smp_len / max(1, _s.smp_rate), 1, 2) + " s", global.f_small, _colw), global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
+    _y += 24;
+    var _ri = 2;
+    for (var r = 0; r < array_length(global.DIGI_RATES); r++)
+    {
+        if (global.DIGI_RATES[r] == _s.rate) { _ri = r; }
+    }
+    ui_heading(_ax, _y, "Sample rate");
+    var _nri = ui_dropdown("snd_rate", _ax, _y + 18, _colw, 32, global.DIGI_RATE_NAMES, _ri, "Sample rate|How many samples a second the C64 plays - one timer interrupt (NMI) each. Lower rates take less memory and sound grittier; higher rates sound clearer but take more of the C64's time while the sample plays.");
+    if (_nri != _ri)
+    {
+        set_val(_s, "rate", global.DIGI_RATES[_nri], "sndrate" + string(current_time));
+        sfx_preview_play(_s);
+    }
+    _y += 62;
+    var _bi = 0;
+    for (var b = 0; b < array_length(global.DIGI_BITS); b++)
+    {
+        if (global.DIGI_BITS[b] == _s.bits) { _bi = b; }
+    }
+    ui_heading(_ax, _y, "Bit crunch");
+    var _nbi = ui_dropdown("snd_bits", _ax, _y + 18, _colw, 32, global.DIGI_BIT_NAMES, _bi, "Bit crunch|The volume register has 16 steps, so C64 samples are 4-bit. Fewer bits crush it further for a lo-fi sound.");
+    if (_nbi != _bi)
+    {
+        set_val(_s, "bits", global.DIGI_BITS[_nbi], "sndbits" + string(current_time));
+        sfx_preview_play(_s);
+    }
+    _y += 62;
+    ui_heading(_ax, _y, "Volume  " + string(round(_s.gain)) + "%");
+    set_val(_s, "gain", ui_slider("snd_gain", _ax, _y + 18, _colw, _s.gain, 10, 300, "Volume|Makes the sample louder or quieter before it is crunched. With only 16 steps quiet parts vanish - turning it up helps; above 100% it clips, which can sound great on drums."), "sndgain");
+    _y += 54;
+    var _half = floor((_colw - 12) / 2);
+    ui_heading(_ax, _y, "Start");
+    set_val(_s, "trim_a", ui_slider("snd_trim_a", _ax, _y + 18, _half, _s.trim_a, 0, 990, "Trim start|Cuts silence or unwanted sound from the beginning."), "sndtrima");
+    ui_heading(_ax + _half + 12, _y, "End");
+    set_val(_s, "trim_b", ui_slider("snd_trim_b", _ax + _half + 12, _y + 18, _half, _s.trim_b, 10, 1000, "Trim end|Cuts the end off. Shorter samples use less memory."), "sndtrimb");
+    if (_s.trim_b <= _s.trim_a + 5) { _s.trim_b = min(1000, _s.trim_a + 10); }
+
+    // ---- column 2: the sample as the C64 plays it, and what it costs ----
+    var _d = digi_levels(_s);
+    var _gy = _y1 + 74;
+    ui_heading(_bx, _gy - 18, "As the C64 plays it");
+    var _gh = 170;
+    ui_inset(_bx, _gy, _bx + _colw, _gy + _gh, 10);
+    ui_register("snd_graph", _bx, _gy, _bx + _colw, _gy + _gh, "Waveform|The sample after trimming, resampling and crunching: each step is one of the 16 volume levels the C64 writes to $D418. The yellow line is the sound playing.");
+    var _n = array_length(_d.nib);
+    var _mid = _gy + _gh * 0.5;
+    var _amp = _gh * 0.5 - 10;
+    if (_n > 1)
+    {
+        var _cols = floor(_colw - 20);
+        draw_set_colour(global.TH.accent);
+        for (var c = 0; c < _cols; c++)
+        {
+            var _a = floor(c * _n / _cols);
+            var _e = max(_a + 1, floor((c + 1) * _n / _cols));
+            var _lo = 15;
+            var _hi = 0;
+            for (var k = _a; k < min(_e, _n); k++)
+            {
+                _lo = min(_lo, _d.nib[k]);
+                _hi = max(_hi, _d.nib[k]);
+            }
+            draw_line(_bx + 10 + c, _mid - (_hi - 7.5) / 7.5 * _amp, _bx + 10 + c, _mid - (_lo - 7.5) / 7.5 * _amp + 1);
+        }
+    }
+    var _prog = sfx_preview_progress(_s);
+    if (_prog >= 0)
+    {
+        var _mx = _bx + 10 + _prog * max(1, _colw - 21);
+        draw_line_width_colour(_mx, _gy + 8, _mx, _gy + _gh - 8, 2, global.TH.warn, global.TH.warn);
+    }
+    var _by = _gy + _gh + 12;
+    var _info = string(_n div 2) + " bytes  -  " + string_format(_n / max(1, _d.rate), 1, 2) + " s at " + string(round(_d.rate)) + " Hz";
+    if (_d.capped) { _info += "  (cut to " + string(DIGI_MAX_BYTES div 1024) + " KB: lower the rate to keep more)"; }
+    ui_text(_bx, _by, ui_text_fit(_info, global.f_small, _colw), global.TH.text_dim, fa_left, fa_top, global.f_small, 1);
+    _by += 24;
+    var _cpu = round(digi_cpu(_s) * 100);
+    ui_text_wrap(_bx, _by, "While it plays, the timer interrupt takes about " + string(_cpu) + "% of the C64's time (" + string(round(_d.rate)) + " interrupts a second). In a scrolling map game keep samples short or the rate low, or the game can slow down while one plays.", global.TH.text_faint, _colw, global.f_small, 1);
 }

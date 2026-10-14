@@ -1,0 +1,883 @@
+diff --git a/C64NoCode/C64NoCodeStudio.yyp b/C64NoCode/C64NoCodeStudio.yyp
+index b86b06d..520490f 100644
+--- a/C64NoCode/C64NoCodeStudio.yyp
++++ b/C64NoCode/C64NoCodeStudio.yyp
+@@ -37,6 +37,7 @@
+     {"id":{"name":"scr_asm6502","path":"scripts/scr_asm6502/scr_asm6502.yy",},},
+     {"id":{"name":"scr_codegen","path":"scripts/scr_codegen/scr_codegen.yy",},},
+     {"id":{"name":"scr_codeview","path":"scripts/scr_codeview/scr_codeview.yy",},},
++    {"id":{"name":"scr_digi","path":"scripts/scr_digi/scr_digi.yy",},},
+     {"id":{"name":"scr_engine_gen","path":"scripts/scr_engine_gen/scr_engine_gen.yy",},},
+     {"id":{"name":"scr_gfx","path":"scripts/scr_gfx/scr_gfx.yy",},},
+     {"id":{"name":"scr_machine","path":"scripts/scr_machine/scr_machine.yy",},},
+diff --git a/C64NoCode/scripts/scr_codegen/scr_codegen.gml b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+index ad0c30e..0f3f958 100644
+--- a/C64NoCode/scripts/scr_codegen/scr_codegen.gml
++++ b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+@@ -498,6 +498,7 @@ function codegen_project(_p)
+     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
+     // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
+     music_emit(L, _p);
++    digi_emit(L, _p);
+ 
+     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
+ }
+diff --git a/C64NoCode/scripts/scr_codeview/scr_codeview.gml b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+index 04aea7e..4e420fd 100644
+--- a/C64NoCode/scripts/scr_codeview/scr_codeview.gml
++++ b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+@@ -66,6 +66,10 @@ function live_measure()
+         var _ss = live_label(_lab, "sid_start", _org);
+         var _se = live_label(_lab, "sid_end", _ss);
+         live_seg_sound = _se - _ss;
++        // the samples' data counts as sound too
++        var _dgs = live_label(_lab, "dig_start", _org);
++        var _dgn = live_label(_lab, "dig_end", _dgs) - _dgs;
++        live_seg_sound += _dgn;
+         var _ms = live_label(_lab, "mus_start", _org);
+         live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;
+         if (proj.game_type == 1)
+@@ -84,10 +88,10 @@ function live_measure()
+         {
+             var _ve = live_label(_lab, "vars_end", _se);
+             var _sp = live_label(_lab, "spr_data", _ve);
+-            live_seg_code = _ve - _org - live_seg_sound;
++            live_seg_code = _ve - _org - (live_seg_sound - _dgn);
+             live_seg_gap = _sp - _ve;
+             live_seg_sprites = SPR_COUNT * 64;
+-            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music);
++            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn);
+             live_limit = C64_BASIC_END;
+             live_spr_end = _sp + live_seg_sprites;
+         }
+diff --git a/C64NoCode/scripts/scr_digi/scr_digi.gml b/C64NoCode/scripts/scr_digi/scr_digi.gml
+new file mode 100644
+index 0000000..8e28e0a
+--- /dev/null
++++ b/C64NoCode/scripts/scr_digi/scr_digi.gml
+@@ -0,0 +1,276 @@
++/// C64 NO-CODE STUDIO - sampled sounds ("digis"), ported from ADAM's Sound page sample import.
++/// A WAV is kept as an 8-bit mono source (up to 22 kHz, 5 seconds). The C64 plays it the classic
++/// way: a CIA 2 timer fires an NMI a few thousand times a second and each NMI writes the next
++/// 4-bit sample to the SID's master volume ($D418, low nibble). Two samples are packed in a byte.
++/// The SID's voices are not used, so a sample plays alongside sound effects and music - but they
++/// share the volume register, so while it plays they rise and fall with it (as in every C64
++/// game that talks). The newer 8580 SID plays $D418 samples very quietly; the 6581, VICE's
++/// default and the C64 Ultimate's 6581 mode play them loud.
++
++#macro DIGI_SRC_MAX_RATE 22050
++#macro DIGI_SRC_MAX_SECONDS 5
++#macro DIGI_MAX_BYTES 16384
++#macro DIGI_NMI_CYCLES 66          // an NMI: entry, the handler's average path and RTI (plus the KERNAL hop)
++
++function digi_defs_init()
++{
++    global.DIGI_RATES = [2000, 3000, 4000, 5000, 6000, 8000];
++    global.DIGI_RATE_NAMES = ["2000 Hz  (very crunchy)", "3000 Hz", "4000 Hz  (classic C64 speech)", "5000 Hz", "6000 Hz", "8000 Hz  (clearest, busiest)"];
++    global.DIGI_BITS = [4, 3, 2];
++    global.DIGI_BIT_NAMES = ["4-bit  (all $D418 has)", "3-bit  (gritty)", "2-bit  (crushed)"];
++    global.digi_cache = {};
++    global.digi_cache_n = 0;
++}
++
++/// Reads a .WAV file into sound _s (8, 16, 24 or 32-bit, PCM or float, mono or stereo, any rate):
++/// mixed to mono, resampled to at most 22 kHz, the first 5 seconds kept, normalised. (ADAM's sfx_import_wav)
++function sfx_import_wav(_s, _path)
++{
++    var _b = buffer_load(_path);
++    if (_b == -1) { return false; }
++    var _size = buffer_get_size(_b);
++    if (_size < 44)
++    {
++        buffer_delete(_b);
++        return false;
++    }
++    var _riff = chr(buffer_peek(_b, 0, buffer_u8)) + chr(buffer_peek(_b, 1, buffer_u8)) + chr(buffer_peek(_b, 2, buffer_u8)) + chr(buffer_peek(_b, 3, buffer_u8));
++    var _wave = chr(buffer_peek(_b, 8, buffer_u8)) + chr(buffer_peek(_b, 9, buffer_u8)) + chr(buffer_peek(_b, 10, buffer_u8)) + chr(buffer_peek(_b, 11, buffer_u8));
++    if (_riff != "RIFF" || _wave != "WAVE")
++    {
++        buffer_delete(_b);
++        return false;
++    }
++    var _fmt = 0;
++    var _ch = 0;
++    var _rate = 0;
++    var _bits = 0;
++    var _data = -1;
++    var _dlen = 0;
++    var _o = 12;
++    while (_o + 8 <= _size)
++    {
++        var _id = chr(buffer_peek(_b, _o, buffer_u8)) + chr(buffer_peek(_b, _o + 1, buffer_u8)) + chr(buffer_peek(_b, _o + 2, buffer_u8)) + chr(buffer_peek(_b, _o + 3, buffer_u8));
++        var _len = buffer_peek(_b, _o + 4, buffer_u32);
++        if (_id == "fmt ")
++        {
++            _fmt = buffer_peek(_b, _o + 8, buffer_u16);
++            _ch = buffer_peek(_b, _o + 10, buffer_u16);
++            _rate = buffer_peek(_b, _o + 12, buffer_u32);
++            _bits = buffer_peek(_b, _o + 22, buffer_u16);
++            if (_fmt == 65534 && _len >= 26) { _fmt = buffer_peek(_b, _o + 32, buffer_u16); }
++        }
++        if (_id == "data")
++        {
++            _data = _o + 8;
++            _dlen = min(_len, _size - _data);
++        }
++        _o += 8 + _len + (_len mod 2);
++    }
++    var _bps = _bits div 8;
++    if (_data < 0 || _ch < 1 || _rate < 1000 || _bps < 1 || _bps > 4 || (_fmt != 1 && _fmt != 3))
++    {
++        buffer_delete(_b);
++        return false;
++    }
++    var _frames = _dlen div (_bps * _ch);
++    // only what will be kept is read
++    _frames = min(_frames, ceil(DIGI_SRC_MAX_SECONDS * _rate) + 2);
++    var _src = array_create(_frames, 0);
++    var _peak = 0.0001;
++    for (var f = 0; f < _frames; f++)
++    {
++        var _sum = 0;
++        for (var c = 0; c < _ch; c++)
++        {
++            var _p = _data + (f * _ch + c) * _bps;
++            var _v = 0;
++            switch (_bps)
++            {
++                case 1: _v = (buffer_peek(_b, _p, buffer_u8) - 128) / 128; break;
++                case 2: _v = buffer_peek(_b, _p, buffer_s16) / 32768; break;
++                case 3:
++                    var _w = buffer_peek(_b, _p, buffer_u8) | (buffer_peek(_b, _p + 1, buffer_u8) << 8) | (buffer_peek(_b, _p + 2, buffer_u8) << 16);
++                    if (_w >= 8388608) { _w -= 16777216; }
++                    _v = _w / 8388608;
++                    break;
++                case 4:
++                    if (_fmt == 3) { _v = buffer_peek(_b, _p, buffer_f32); }
++                    else { _v = buffer_peek(_b, _p, buffer_s32) / 2147483648; }
++                    break;
++            }
++            _sum += _v;
++        }
++        _src[f] = _sum / _ch;
++        _peak = max(_peak, abs(_src[f]));
++    }
++    buffer_delete(_b);
++    var _nrate = min(_rate, DIGI_SRC_MAX_RATE);
++    var _step = _rate / _nrate;
++    var _n = min(floor(_frames / _step), DIGI_SRC_MAX_SECONDS * _nrate);
++    if (_n < 2) { return false; }
++    var _ob = buffer_create(_n, buffer_fixed, 1);
++    for (var i = 0; i < _n; i++)
++    {
++        var _pos = i * _step;
++        var _i0 = floor(_pos);
++        var _fr = _pos - _i0;
++        var _a0 = _src[min(_i0, _frames - 1)];
++        var _a1 = _src[min(_i0 + 1, _frames - 1)];
++        var _val = (_a0 + (_a1 - _a0) * _fr) / _peak;
++        buffer_write(_ob, buffer_s8, clamp(round(_val * 127), -127, 127));
++    }
++    _s.smp = buffer_base64_encode(_ob, 0, _n);
++    buffer_delete(_ob);
++    _s.smp_rate = _nrate;
++    _s.smp_len = _n;
++    _s.smp_file = filename_name(_path);
++    _s.kind = 1;
++    _s.trim_a = 0;
++    _s.trim_b = 1000;
++    _s.gain = 100;
++    _s.name = string_copy(filename_change_ext(filename_name(_path), ""), 1, 16);
++    return true;
++}
++
++function digi_key(_s)
++{
++    return string(_s.rate) + "|" + string(_s.bits) + "|" + string(_s.gain) + "|" + string(_s.trim_a) + "|" + string(_s.trim_b) + "|"
++         + string(_s.smp_len) + "|" + _s.smp_file + "|" + string(string_length(_s.smp)) + "|" + string(sid_clock());
++}
++
++/// The sample as the C64 plays it: { nib : 4-bit levels 0..15, rate : the real NMI rate,
++/// latch : the CIA timer value, capped : cut to fit }. Cached.
++function digi_levels(_s)
++{
++    var _key = digi_key(_s);
++    var _hit = global.digi_cache[$ _key];
++    if (!is_undefined(_hit)) { return _hit; }
++    var _latch = clamp(round(sid_clock() / max(1000, _s.rate)) - 1, 60, 65535);
++    var _rate = sid_clock() / (_latch + 1);
++    var _res = { nib : [], rate : _rate, latch : _latch, capped : false };
++    if (_s.smp != "" && _s.smp_len >= 2)
++    {
++        var _buf = buffer_base64_decode(_s.smp);
++        var _n = min(_s.smp_len, buffer_get_size(_buf));
++        var _a = floor(_n * clamp(_s.trim_a, 0, 1000) / 1000);
++        var _b = floor(_n * clamp(_s.trim_b, 0, 1000) / 1000);
++        if (_b > _a + 1)
++        {
++            var _step = _s.smp_rate / _rate;
++            var _len = floor((_b - _a) / _step);
++            if (_len > DIGI_MAX_BYTES * 2)
++            {
++                _len = DIGI_MAX_BYTES * 2;
++                _res.capped = true;
++            }
++            _len -= _len mod 2;
++            var _out = array_create(_len, 8);
++            var _gain = _s.gain / 100;
++            var _q = 1 << (4 - clamp(_s.bits, 1, 4));
++            for (var i = 0; i < _len; i++)
++            {
++                // averaged over the step (a little low-pass, so the crunch is not all aliasing)
++                var _p0 = _a + i * _step;
++                var _acc = 0;
++                var _cnt = 0;
++                for (var k = floor(_p0); k < min(_n, floor(_p0 + _step)); k++)
++                {
++                    _acc += buffer_peek(_buf, k, buffer_s8);
++                    _cnt += 1;
++                }
++                if (_cnt == 0) { _acc = buffer_peek(_buf, min(floor(_p0), _n - 1), buffer_s8); _cnt = 1; }
++                var _v = clamp(_acc / _cnt * _gain, -128, 127);
++                var _lv = clamp(floor((_v + 128) / 16), 0, 15);
++                if (_q > 1) { _lv = floor(_lv / _q) * _q + floor(_q / 2); }
++                _out[i] = clamp(_lv, 0, 15);
++            }
++            _res.nib = _out;
++        }
++        buffer_delete(_buf);
++    }
++    global.digi_cache_n += 1;
++    if (global.digi_cache_n > 24)
++    {
++        global.digi_cache = {};
++        global.digi_cache_n = 1;
++    }
++    global.digi_cache[$ _key] = _res;
++    return _res;
++}
++
++/// Bytes the sample takes on the C64 (2 samples a byte)
++function digi_bytes(_s)
++{
++    return array_length(digi_levels(_s).nib) div 2;
++}
++
++/// Share of the C64's time the NMIs take while the sample plays (0..1)
++function digi_cpu(_s)
++{
++    return digi_levels(_s).rate * DIGI_NMI_CYCLES / sid_clock();
++}
++
++function sfx_digi_seconds(_s)
++{
++    var _d = digi_levels(_s);
++    return array_length(_d.nib) / max(1, _d.rate);
++}
++
++/// The preview: the 4-bit levels held for their time, as the volume register steps
++function sfx_digi_render(_s)
++{
++    var _d = digi_levels(_s);
++    var _rate = SFX_PREVIEW_RATE;
++    var _n = max(64, floor(array_length(_d.nib) / max(1, _d.rate) * _rate) + 64);
++    var _buf = buffer_create(_n * 2, buffer_fixed, 2);
++    var _m = array_length(_d.nib);
++    for (var i = 0; i < _n; i++)
++    {
++        var _k = floor(i * _d.rate / _rate);
++        var _v = 0;
++        if (_k < _m) { _v = (_d.nib[_k] - 7.5) / 7.5; }
++        buffer_write(_buf, buffer_s16, round(_v * 0.9 * 32000));
++    }
++    return _buf;
++}
++
++/// Pushes the packed sample data (high nibble first) for every sampled sound of _p onto L
++function digi_emit(L, _p)
++{
++    array_push(L, "; ---------------- samples: 4-bit, 2 a byte, played through $D418 by the NMI ----------------", "dig_start:");
++    for (var i = 0; i < min(SFX_MAX, array_length(_p.sfx)); i++)
++    {
++        var _s = _p.sfx[i];
++        if (_s.kind != 1) { continue; }
++        var _nib = digi_levels(_s).nib;
++        array_push(L, "sdig_" + string(i) + ":");
++        var _row = "";
++        var _cnt = 0;
++        for (var k = 0; k + 1 < array_length(_nib); k += 2)
++        {
++            if (_cnt > 0) { _row += ","; }
++            _row += string((_nib[k] << 4) | _nib[k + 1]);
++            _cnt += 1;
++            if (_cnt == 32)
++            {
++                array_push(L, " .byte " + _row);
++                _row = "";
++                _cnt = 0;
++            }
++        }
++        if (_cnt > 0) { array_push(L, " .byte " + _row); }
++        if (array_length(_nib) < 2) { array_push(L, " .byte $88"); }
++    }
++    array_push(L, "dig_end:");
++}
++
++/// True when project _p has a sampled sound
++function digi_any(_p)
++{
++    for (var i = 0; i < min(SFX_MAX, array_length(_p.sfx)); i++)
++    {
++        if (_p.sfx[i].kind == 1) { return true; }
++    }
++    return false;
++}
+diff --git a/C64NoCode/scripts/scr_digi/scr_digi.yy b/C64NoCode/scripts/scr_digi/scr_digi.yy
+new file mode 100644
+index 0000000..a98b665
+--- /dev/null
++++ b/C64NoCode/scripts/scr_digi/scr_digi.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_digi",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_digi",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index b784115..b57336e 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -437,6 +437,7 @@ function engine_codegen(_p)
+     // SID sound player + tables (shared with single screen games, scr_sid)
+     sid_emit(L, _p);
+     music_emit(L, _p);
++    digi_emit(L, _p);
+ 
+     // sprite and charset blobs (copied to $E000 / $F000 at start)
+     array_push(L, "spr_src:");
+@@ -585,7 +586,7 @@ function build_engine_prg(_path)
+     if (_end > 32768)
+     {
+         build_ok = false;
+-        build_msg = "Build failed - the game data is too big (ends at $" + string_upper(dec_to_hex(_end)) + ", limit $8000). Make maps smaller or use fewer levels.";
++        build_msg = "Build failed - the game data is too big (ends at $" + string_upper(dec_to_hex(_end)) + ", limit $8000). Make maps smaller, use fewer levels, or make samples shorter or their rate lower.";
+         return false;
+     }
+     var _b = buffer_create(array_length(_res.bytes) + 2, buffer_fixed, 1);
+diff --git a/C64NoCode/scripts/scr_music/scr_music.gml b/C64NoCode/scripts/scr_music/scr_music.gml
+index ae1bd26..5c3b5b1 100644
+--- a/C64NoCode/scripts/scr_music/scr_music.gml
++++ b/C64NoCode/scripts/scr_music/scr_music.gml
+@@ -208,7 +208,11 @@ function music_inst_ids()
+ {
+     var _out = [];
+     for (var i = 0; i < array_length(global.MUS_INST); i++) { array_push(_out, i); }
+-    for (var k = 0; k < array_length(proj.sfx); k++) { array_push(_out, MUS_INST_USER + k); }
++    // samples play through the volume register, not a voice: they can't be music instruments
++    for (var k = 0; k < array_length(proj.sfx); k++)
++    {
++        if (proj.sfx[k].kind != 1) { array_push(_out, MUS_INST_USER + k); }
++    }
+     return _out;
+ }
+ 
+@@ -431,6 +435,12 @@ function music_inst_compiled(_id, _drum)
+     {
+         var _k = clamp(_id - MUS_INST_USER, 0, array_length(proj.sfx) - 1);
+         var _s = proj.sfx[_k];
++        if (_s.kind == 1)
++        {
++            // a sound that became a sample: the nearest built-in instrument plays instead
++            if (_drum) { return music_inst_compiled(1, true); }
++            return music_inst_compiled(10, false);
++        }
+         var _fx = 0;
+         if (_drum) { _fx = clamp(_s.pitch, 1, 255); }
+         return {
+diff --git a/C64NoCode/scripts/scr_sid/scr_sid.gml b/C64NoCode/scripts/scr_sid/scr_sid.gml
+index f86b468..3cdb1db 100644
+--- a/C64NoCode/scripts/scr_sid/scr_sid.gml
++++ b/C64NoCode/scripts/scr_sid/scr_sid.gml
+@@ -10,6 +10,7 @@
+ 
+ function sid_defs_init()
+ {
++    digi_defs_init();
+     global.WAVE_NAMES = ["Triangle (soft)", "Sawtooth (buzzy)", "Pulse (classic)", "Noise (crunchy)",
+                          "Pulse + triangle", "Pulse + sawtooth", "Sawtooth + triangle"];
+     global.WAVE_SHORT = ["Triangle", "Sawtooth", "Pulse", "Noise", "Pulse+tri", "Pulse+saw", "Saw+tri"];
+@@ -45,7 +46,18 @@ function sfx_new(_name)
+         fsweep : 0,
+         arp : false,
+         arp1 : 4,
+-        arp2 : 7
++        arp2 : 7,
++        // kind 1: a sample imported from a WAV (scr_digi), played through $D418
++        kind : 0,
++        smp : "",
++        smp_rate : 0,
++        smp_len : 0,
++        smp_file : "",
++        rate : 4000,
++        bits : 4,
++        gain : 100,
++        trim_a : 0,
++        trim_b : 1000
+     };
+ }
+ 
+@@ -101,6 +113,18 @@ function sfx_list_from_loaded(_raw)
+             _s.fmode = clamp(floor(_s.fmode), 0, 3);
+             if (!is_numeric(_s.group)) { _s.group = -1; }
+             if (!is_bool(_s.arp)) { _s.arp = (_s.arp == 1); }
++            if (!is_string(_s.smp) || !is_string(_s.smp_file) || !is_numeric(_s.kind))
++            {
++                _s.smp = "";
++                _s.smp_file = "";
++                _s.kind = 0;
++            }
++            _s.kind = clamp(floor(_s.kind), 0, 1);
++            _s.rate = clamp(floor(_s.rate), 1000, 16000);
++            _s.bits = clamp(floor(_s.bits), 2, 4);
++            _s.gain = clamp(_s.gain, 10, 300);
++            _s.trim_a = clamp(_s.trim_a, 0, 990);
++            _s.trim_b = clamp(_s.trim_b, _s.trim_a + 10, 1000);
+             array_push(_out, _s);
+         }
+     }
+@@ -163,6 +187,7 @@ function sid_cutoff_hz(_c)
+ /// Seconds the preview of _s lasts (gate time + release, capped)
+ function sfx_seconds(_s)
+ {
++    if (_s.kind == 1) { return sfx_digi_seconds(_s); }
+     var _gate = max(1, _s.len - 1) / sid_fps();
+     var _rel = global.SID_DR_MS[clamp(_s.rel, 0, 15)] / 1000;
+     return min(_gate + _rel + 0.02, 4);
+@@ -173,6 +198,7 @@ function sfx_seconds(_s)
+ /// Returns a buffer of signed 16-bit samples at SFX_PREVIEW_RATE (caller deletes it).
+ function sfx_render(_s)
+ {
++    if (_s.kind == 1) { return sfx_digi_render(_s); }
+     var _rate = SFX_PREVIEW_RATE;
+     var _clock = sid_clock();
+     var _fps = sid_fps();
+@@ -356,6 +382,7 @@ function sfx_render(_s)
+ /// Stable text key of every setting that changes the sound (to know when a render is stale)
+ function sfx_key(_s)
+ {
++    if (_s.kind == 1) { return "digi|" + digi_key(_s); }
+     return string(_s.wave) + "," + string(_s.pitch) + "," + string(_s.sweep) + "," + string(_s.len) + ","
+          + string(_s.atk) + string(_s.dec) + string(_s.sus) + string(_s.rel) + "," + string(_s.pw) + "," + string(_s.pws) + ","
+          + string(_s.fmode) + "," + string(_s.fcut) + "," + string(_s.fres) + "," + string(_s.fsweep) + ","
+@@ -422,16 +449,32 @@ function sid_emit(L, _p)
+     array_push(L, "; ---------------- SID sound player (voices 1 and 2; the music driver has all 3 when they are free) ----------------");
+     array_push(L, "SFX_N = " + string(_ns));
+     array_push(L, "sid_start:");
+-    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418", " rts");
++    var _dg = digi_any(_p);
++    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sid_mode", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418");
++    if (_dg)
++    {
++        // samples: CIA 2 timer A interrupts off for now, and the NMI pointed at the sample player
++        // (through $0318 when the KERNAL is in, straight from $FFFA when it is banked out)
++        array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda $dd0d");
++        array_push(L, " lda #<sid_nmi", " sta $0318", " sta $fffa", " lda #>sid_nmi", " sta $0319", " sta $fffb");
++        // a sample (Y = sound): stop the one playing, point the NMI at the new one, start the timer
++        array_push(L, " rts", "sidp_dg:", " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " sta dg_nib");
++        array_push(L, " lda sfxt_dal,y", " sta dgn_a1+1", " sta dgn_a2+1", " lda sfxt_dah,y", " sta dgn_a1+2", " sta dgn_a2+2");
++        array_push(L, " lda sfxt_dnl,y", " sta dg_cl", " lda sfxt_dnh,y", " sta dg_ch", " lda sfxt_dtl,y", " sta $dd04", " lda sfxt_dth,y", " sta $dd05");
++        array_push(L, " lda $dd0d", " lda #$81", " sta $dd0d", " lda #$11", " sta $dd0e", " ldx sid_sx", " ldy sid_sy");
++    }
++    array_push(L, " rts");
+     array_push(L, "play_sfx:", " cmp #SFX_N", " bcc sidp_go", " rts");
+-    array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay", " ldx sfxt_v,y");
++    array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay");
++    if (_dg) { array_push(L, " lda sfxt_dg,y", " bne sidp_dg"); }
++    array_push(L, " ldx sfxt_v,y");
+     array_push(L, " lda #0", " sta sv_t,x", " sta $d404,x", " sta $d400,x", " sta sv_step,x");
+     array_push(L, " lda sfxt_ad,y", " sta $d405,x", " lda sfxt_sr,y", " sta $d406,x");
+     array_push(L, " lda sfxt_pwl,y", " sta sv_pwl,x", " sta $d402,x", " lda sfxt_pwh,y", " sta sv_pwh,x", " sta $d403,x");
+     array_push(L, " lda sfxt_pws,y", " sta sv_pws,x", " lda sfxt_sw,y", " sta sv_sw,x");
+     array_push(L, " lda sfxt_f,y", " sta sv_fh,x", " sta $d401,x", " tya", " sta sv_snd,x");
+     // filter: a filtered sound takes the filter; an unfiltered one takes its voice out of it
+-    array_push(L, " lda sfxt_fm,y", " beq sidp_nf", " sta $d418", " lda sfxt_fr,y", " ora sid_vbit,x", " sta sid_d417", " sta $d417");
++    array_push(L, " lda sfxt_fm,y", " beq sidp_nf", " sta $d418", " and #$f0", " sta sid_mode", " lda sfxt_fr,y", " ora sid_vbit,x", " sta sid_d417", " sta $d417");
+     array_push(L, " lda sfxt_fc,y", " sta flt_c", " sta $d416", " lda #0", " sta $d415", " lda sfxt_fsw,y", " sta flt_s");
+     array_push(L, " lda sfxt_len,y", " clc", " adc #25", " sta flt_t", " jmp sidp_g");
+     array_push(L, "sidp_nf:", " lda sid_d417", " and sid_vmask,x", " sta sid_d417", " sta $d417");
+@@ -466,7 +509,24 @@ function sid_emit(L, _p)
+     // the sound is done: its voice leaves the filter (the music gets it back clean)
+     array_push(L, " lda sid_d417", " and sid_vmask,x", " sta sid_d417", " sta $d417");
+     array_push(L, "sidu_x:", " rts");
+-    array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b", " rts");
++    array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b");
++    if (_dg) { array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda sid_mode", " ora #$0f", " sta $d418"); }
++    array_push(L, " rts");
++    if (_dg)
++    {
++        // the sample player: one NMI per sample, the high then the low nibble of each byte,
++        // written to the SID volume (the filter mode bits in the top nibble are kept)
++        array_push(L, "sid_nmi:", " pha", " lda $dd0d", " lda dg_nib", " bne dgn_lo", " inc dg_nib");
++        array_push(L, "dgn_a1:", " lda $1000", " lsr", " lsr", " lsr", " lsr", " ora sid_mode", " sta $d418", " pla", " rti");
++        array_push(L, "dgn_lo:", " lda #0", " sta dg_nib");
++        array_push(L, "dgn_a2:", " lda $1000", " and #$0f", " ora sid_mode", " sta $d418");
++        array_push(L, " inc dgn_a1+1", " inc dgn_a2+1", " bne dgn_c", " inc dgn_a1+2", " inc dgn_a2+2");
++        array_push(L, "dgn_c:", " lda dg_cl", " bne dgn_d", " dec dg_ch");
++        array_push(L, "dgn_d:", " dec dg_cl", " lda dg_cl", " ora dg_ch", " bne dgn_x");
++        // the end: timer off, full volume back
++        array_push(L, " lda #$7f", " sta $dd0d", " lda #0", " sta $dd0e", " lda sid_mode", " ora #$0f", " sta $d418");
++        array_push(L, "dgn_x:", " pla", " rti");
++    }
+ 
+     // rnd: a random byte in A (16-bit LFSR mixed with the raster line; X and Y kept).
+     // The SID's voice 3 noise ($D41B) can't be used: voice 3 plays music.
+@@ -481,6 +541,36 @@ function sid_emit(L, _p)
+     var _vars = ["sv_t", "sv_fh", "sv_sw", "sv_w", "sv_snd", "sv_step", "sv_pwl", "sv_pwh", "sv_pws"];
+     for (var k = 0; k < array_length(_vars); k++) { array_push(L, _vars[k] + ":", " .fill 8,0"); }
+     array_push(L, "flt_c:", " .fill 1,0", "flt_s:", " .fill 1,0", "flt_t:", " .fill 1,0", "sid_d417:", " .fill 1,0");
+-    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0", "rnd_s:", " .byte $5a,$c3");
++    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0", "rnd_s:", " .byte $5a,$c3", "sid_mode:", " .fill 1,0");
++    if (_dg)
++    {
++        // per sound: is it a sample, where its data is, how many bytes, the CIA timer value
++        var _t = [[], [], [], [], [], [], []];
++        for (var d = 0; d < _ns; d++)
++        {
++            var _di = min(d, array_length(_p.sfx) - 1);
++            var _sd = _p.sfx[_di];
++            if (_sd.kind == 1)
++            {
++                var _lv = digi_levels(_sd);
++                var _nb = max(1, array_length(_lv.nib) div 2);
++                var _lab = "sdig_" + string(_di);
++                array_push(_t[0], "1");
++                array_push(_t[1], "<" + _lab);
++                array_push(_t[2], ">" + _lab);
++                array_push(_t[3], string(_nb & 255));
++                array_push(_t[4], string(_nb >> 8));
++                array_push(_t[5], string(_lv.latch & 255));
++                array_push(_t[6], string(_lv.latch >> 8));
++            }
++            else
++            {
++                for (var z = 0; z < 7; z++) { array_push(_t[z], "0"); }
++            }
++        }
++        var _tn = ["sfxt_dg", "sfxt_dal", "sfxt_dah", "sfxt_dnl", "sfxt_dnh", "sfxt_dtl", "sfxt_dth"];
++        for (var q = 0; q < 7; q++) { array_push(L, _tn[q] + ":", " .byte " + string_join_ext(",", _t[q])); }
++        array_push(L, "dg_nib:", " .fill 1,0", "dg_cl:", " .fill 1,0", "dg_ch:", " .fill 1,0");
++    }
+     array_push(L, "sid_end:");
+ }
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index ea3a69b..96ccc75 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -63,6 +63,7 @@ function tut_init()
+         tut_step(WS_SOUND, "snd_sweep", "Pitch slide", "Make the pitch rise or fall. Falling slides sound like lasers, rising slides like coins and power-ups."),
+         tut_step(WS_SOUND, "snd_graph", "Envelope", "Attack, decay, sustain and release shape how the volume changes over time. The picture updates as you move the sliders."),
+         tut_step(WS_SOUND, "snd_fmode", "The SID filter", "Low pass, band pass or high pass with resonance and a sweep - filtered noise makes great explosions and wind."),
++        tut_step(WS_SOUND, "snd_kind_1", "Real samples", "Switch a sound to Sample and import a WAV - a voice, a drum, an explosion. The C64 plays it the classic way, 4-bit through the SID volume register, and the page shows what it costs in memory and CPU time."),
+         tut_step(WS_SOUND, "snd_preview", "Listen", "Play the sound any time (or press Space). Rules on the Logic page choose when your game plays it."),
+         // ---------- MUSIC ----------
+         tut_step(WS_MUSIC, "", "Music", "Songs for the SID chip's 3 voices, played by a small music driver inside your game. Sound effects borrow voice 1 or 2 while they play, then the music has the voice back."),
+diff --git a/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml b/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
+index 650ea59..80bd27c 100644
+--- a/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
++++ b/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
+@@ -15,7 +15,9 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
+ 
+     var _cx1 = _x1 + _lw + 12;
+     var _s = proj.sfx[snd_sel];
+-    ui_panel(_cx1, _y1, _x2, _y2, "Sound " + string(snd_sel + 1) + "  -  SID " + global.VOICE_NAMES[clamp(_s.voice, 0, 1)]);
++    var _title = "Sound " + string(snd_sel + 1) + "  -  SID " + global.VOICE_NAMES[clamp(_s.voice, 0, 1)];
++    if (_s.kind == 1) { _title = "Sound " + string(snd_sel + 1) + "  -  sample, played through the SID volume ($D418)"; }
++    ui_panel(_cx1, _y1, _x2, _y2, _title);
+     if (keyboard_check_pressed(vk_space) && ui_focus == "" && ui_can_input() && !keyboard_check(vk_control)) { sfx_preview_play(_s); }
+ 
+     var _gap = 24;
+@@ -25,6 +27,12 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
+     var _qx = _bx + _colw + _gap;
+     var _half = floor((_colw - 12) / 2);
+     var _third = floor((_colw - 16) / 3);
++    if (_s.kind == 1)
++    {
++        sound_sample_panel(_s, _ax, _bx, _colw, _y1, _y2);
++        sound_listen_draw(_s, _qx, _colw, _y1, _y2);
++        return;
++    }
+ 
+     // ---------------- column 1: the tone ----------------
+     var _y = _y1 + 56;
+@@ -160,56 +168,7 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
+         ui_text(_bx + _colw * 0.5, _by + 20, "Filter is off - pick a filter type above", global.TH.text_dim, fa_center, fa_middle, global.f_small, 1);
+     }
+ 
+-    // ---------------- column 3: listen + presets ----------------
+-    var _qy = _y1 + 56;
+-    if (ui_button("snd_preview", _qx, _qy, _colw, 44, "Play sound  (Space)", "Play|Hear the sound as the C64 plays it: the same frame-by-frame steps as the game, the SID's real envelope rates, noise and filter. Shortcut: Space.", BTN_ACCENT))
+-    {
+-        sfx_preview_play(_s);
+-    }
+-    _qy += 56;
+-    var _sh = 90;
+-    ui_inset(_qx, _qy, _qx + _colw, _qy + _sh, 10);
+-    ui_register("snd_scope", _qx, _qy, _qx + _colw, _qy + _sh, "Scope|The first quarter second of the sound's wave, as the preview made it.");
+-    if (preview_key == sfx_key(_s) && array_length(preview_scope) > 1)
+-    {
+-        var _cy = _qy + _sh * 0.5;
+-        var _n = array_length(preview_scope);
+-        var _px = _qx + 6;
+-        var _py = _cy - preview_scope[0] * (_sh * 0.45);
+-        for (var sp = 1; sp < _n; sp++)
+-        {
+-            var _nx = _qx + 6 + sp / (_n - 1) * (_colw - 12);
+-            var _ny = _cy - preview_scope[sp] * (_sh * 0.45);
+-            draw_line_width_colour(_px, _py, _nx, _ny, 2, global.TH.accent2, global.TH.accent2);
+-            _px = _nx;
+-            _py = _ny;
+-        }
+-    }
+-    else
+-    {
+-        ui_text(_qx + _colw * 0.5, _qy + _sh * 0.5, "Press Play to see the wave", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
+-    }
+-    _qy += _sh + 16;
+-    ui_heading(_qx, _qy, "Start from a preset");
+-    _qy += 20;
+-    var _pw2 = floor((_colw - 8) / 2);
+-    var _np = array_length(global.SFX_PRESET_NAMES);
+-    for (var p = 0; p < _np; p++)
+-    {
+-        var _pbx = _qx + (p mod 2) * (_pw2 + 8);
+-        var _pby = _qy + (p div 2) * 38;
+-        if (ui_button("snd_preset_" + string(p), _pbx, _pby, _pw2, 32, global.SFX_PRESET_NAMES[p], global.SFX_PRESET_NAMES[p] + " preset|Replaces this sound's settings with a ready-made " + string_lower(global.SFX_PRESET_NAMES[p]) + " sound and plays it. The name, folder and voice stay.", BTN_NORMAL))
+-        {
+-            undo_mark("sndpreset" + string(current_time));
+-            sfx_apply_preset(_s, p);
+-            sfx_preview_play(_s);
+-        }
+-    }
+-    _qy += ceil(_np / 2) * 38 + 8;
+-    if (_qy < _y2 - 60)
+-    {
+-        ui_text_wrap(_qx, _qy, "Sounds play on SID voices 1 and 2, so two can sound at once. The preview follows the SID closely; the real chip has its own character - always check in VICE or on your C64.", global.TH.text_faint, _colw, global.f_small, 1);
+-    }
++    sound_listen_draw(_s, _qx, _colw, _y1, _y2);
+ }
+ 
+ /// The Sound page's left panel: sounds in folders, scrolling, with add / copy / delete
+@@ -315,6 +274,11 @@ function sound_list_draw(_x1, _y1, _x2, _y2)
+         ui_text(_ix1 + 14, _ry + 15, string(_i + 1) + ". " + ui_text_fit(_f.name, global.f_bold, _ix2 - _ix1 - 100), global.TH.text, fa_left, fa_middle, global.f_bold, 1);
+         var _sub = global.WAVE_SHORT[clamp(_f.wave, 0, array_length(global.WAVE_SHORT) - 1)] + "  -  voice " + string(_f.voice + 1);
+         if (_f.fmode > 0) { _sub += "  -  filter"; }
++        if (_f.kind == 1)
++        {
++            _sub = "Sample  -  no WAV yet";
++            if (_f.smp != "") { _sub = "Sample  -  " + string(digi_bytes(_f)) + " bytes"; }
++        }
+         ui_text(_ix1 + 14, _ry + 33, ui_text_fit(_sub, global.f_small, _ix2 - _ix1 - 76), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
+         if (ui_button(_id + "_play", _ix2 - 56, _ry + 8, 48, 30, "Play", "Play|Hear this sound.", BTN_GHOST))
+         {
+@@ -496,3 +460,193 @@ function sound_delete(_k)
+     snd_sel = clamp(_k, 0, array_length(proj.sfx) - 1);
+     toast("Deleted " + _name, 0);
+ }
++
++
++/// Synth or sample switch, Play, the scope, and the presets (synth sounds) - the Sound page's right column
++function sound_listen_draw(_s, _qx, _colw, _y1, _y2)
++{
++    var _qy = _y1 + 56;
++    // synth or sample
++    var _kw = floor((_colw - 8) / 2);
++    var _kn = ["Synth", "Sample"];
++    var _kh = ["Synth sound|Made on the SID's voices 1 or 2 from a waveform, envelope, slide and filter. A few bytes each.",
++               "Sampled sound|A real recording - a voice, a drum, an explosion - imported from a WAV and played the way C64 games talk: 4-bit samples written to the SID's volume register by a timer interrupt."];
++    for (var kk = 0; kk < 2; kk++)
++    {
++        var _ks = BTN_GHOST;
++        if (_s.kind == kk) { _ks = BTN_ACCENT; }
++        if (ui_button("snd_kind_" + string(kk), _qx + kk * (_kw + 8), _qy, _kw, 32, _kn[kk], _kh[kk], _ks) && _s.kind != kk)
++        {
++            sfx_preview_stop();
++            set_val(_s, "kind", kk, "sndkind" + string(current_time));
++        }
++    }
++    _qy += 44;
++    if (ui_button("snd_preview", _qx, _qy, _colw, 44, "Play sound  (Space)", "Play|Hear the sound as the C64 plays it: the same frame-by-frame steps as the game, the SID's real envelope rates, noise and filter. Shortcut: Space.", BTN_ACCENT))
++    {
++        sfx_preview_play(_s);
++    }
++    _qy += 56;
++    var _sh = 90;
++    ui_inset(_qx, _qy, _qx + _colw, _qy + _sh, 10);
++    ui_register("snd_scope", _qx, _qy, _qx + _colw, _qy + _sh, "Scope|The first quarter second of the sound's wave, as the preview made it.");
++    if (preview_key == sfx_key(_s) && array_length(preview_scope) > 1)
++    {
++        var _cy = _qy + _sh * 0.5;
++        var _n = array_length(preview_scope);
++        var _px = _qx + 6;
++        var _py = _cy - preview_scope[0] * (_sh * 0.45);
++        for (var sp = 1; sp < _n; sp++)
++        {
++            var _nx = _qx + 6 + sp / (_n - 1) * (_colw - 12);
++            var _ny = _cy - preview_scope[sp] * (_sh * 0.45);
++            draw_line_width_colour(_px, _py, _nx, _ny, 2, global.TH.accent2, global.TH.accent2);
++            _px = _nx;
++            _py = _ny;
++        }
++    }
++    else
++    {
++        ui_text(_qx + _colw * 0.5, _qy + _sh * 0.5, "Press Play to see the wave", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
++    }
++    _qy += _sh + 16;
++    if (_s.kind == 1)
++    {
++        ui_text_wrap(_qx, _qy, "Samples play through the SID's master volume, so while one plays the music and sound effects rise and fall with it - as in every C64 game that talks. The old 6581 SID (VICE's default, and the C64 Ultimate in 6581 mode) plays them loud; the newer 8580 only very quietly.", global.TH.text_faint, _colw, global.f_small, 1);
++        return;
++    }
++    ui_heading(_qx, _qy, "Start from a preset");
++    _qy += 20;
++    var _pw2 = floor((_colw - 8) / 2);
++    var _np = array_length(global.SFX_PRESET_NAMES);
++    for (var p = 0; p < _np; p++)
++    {
++        var _pbx = _qx + (p mod 2) * (_pw2 + 8);
++        var _pby = _qy + (p div 2) * 38;
++        if (ui_button("snd_preset_" + string(p), _pbx, _pby, _pw2, 32, global.SFX_PRESET_NAMES[p], global.SFX_PRESET_NAMES[p] + " preset|Replaces this sound's settings with a ready-made " + string_lower(global.SFX_PRESET_NAMES[p]) + " sound and plays it. The name, folder and voice stay.", BTN_NORMAL))
++        {
++            undo_mark("sndpreset" + string(current_time));
++            sfx_apply_preset(_s, p);
++            sfx_preview_play(_s);
++        }
++    }
++    _qy += ceil(_np / 2) * 38 + 8;
++    if (_qy < _y2 - 60)
++    {
++        ui_text_wrap(_qx, _qy, "Sounds play on SID voices 1 and 2, so two can sound at once. The preview follows the SID closely; the real chip has its own character - always check in VICE or on your C64.", global.TH.text_faint, _colw, global.f_small, 1);
++    }
++}
++
++/// The sample controls (ADAM's sample panel for the C64): import, rate, crunch, volume, trim, waveform
++function sound_sample_panel(_s, _ax, _bx, _colw, _y1, _y2)
++{
++    var _y = _y1 + 56;
++    var _nw = floor(_colw * 0.55);
++    ui_heading(_ax, _y, "Name");
++    set_val(_s, "name", ui_textfield("snd_name", _ax, _y + 18, _nw, 32, _s.name, 16, "Sound name|Shown on the Logic page when you pick a sound to play."), "sndname");
++    ui_heading(_ax + _nw + 8, _y, "Folder");
++    var _fnames = ["(none)"];
++    for (var g = 0; g < array_length(proj.sound_groups); g++) { array_push(_fnames, proj.sound_groups[g].name); }
++    var _fg = ui_dropdown("snd_folder", _ax + _nw + 8, _y + 18, _colw - _nw - 8, 32, _fnames, clamp(_s.group + 1, 0, array_length(_fnames) - 1), "Folder|Which folder this sound is in.");
++    set_val(_s, "group", _fg - 1, "sndfolder");
++    _y += 62;
++    if (ui_button("snd_import", _ax, _y, _colw, 38, "Import WAV...", "Import sample|Loads a .WAV file (8, 16, 24 or 32-bit, mono or stereo, any rate). The first 5 seconds are kept; stereo is mixed to mono.", BTN_ACCENT))
++    {
++        var _f = get_open_filename("WAV sound|*.wav", "");
++        if (_f != "")
++        {
++            undo_mark("sndimport" + string(current_time));
++            if (sfx_import_wav(_s, _f))
++            {
++                toast("Sample imported: " + string(digi_bytes(_s)) + " bytes on the C64", 0);
++                sfx_preview_play(_s);
++            }
++            else { toast("Could not read that WAV file", 2); }
++        }
++    }
++    _y += 46;
++    if (_s.smp == "")
++    {
++        ui_text_wrap(_ax, _y, "No sample yet. Import a WAV, then choose how crunchy it should sound on the C64.", global.TH.text_dim, _colw, global.f_body, 1);
++        return;
++    }
++    ui_text(_ax, _y, ui_text_fit(_s.smp_file + "  -  " + string_format(_s.smp_len / max(1, _s.smp_rate), 1, 2) + " s", global.f_small, _colw), global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
++    _y += 24;
++    var _ri = 2;
++    for (var r = 0; r < array_length(global.DIGI_RATES); r++)
++    {
++        if (global.DIGI_RATES[r] == _s.rate) { _ri = r; }
++    }
++    ui_heading(_ax, _y, "Sample rate");
++    var _nri = ui_dropdown("snd_rate", _ax, _y + 18, _colw, 32, global.DIGI_RATE_NAMES, _ri, "Sample rate|How many samples a second the C64 plays - one timer interrupt (NMI) each. Lower rates take less memory and sound grittier; higher rates sound clearer but take more of the C64's time while the sample plays.");
++    if (_nri != _ri)
++    {
++        set_val(_s, "rate", global.DIGI_RATES[_nri], "sndrate" + string(current_time));
++        sfx_preview_play(_s);
++    }
++    _y += 62;
++    var _bi = 0;
++    for (var b = 0; b < array_length(global.DIGI_BITS); b++)
++    {
++        if (global.DIGI_BITS[b] == _s.bits) { _bi = b; }
++    }
++    ui_heading(_ax, _y, "Bit crunch");
++    var _nbi = ui_dropdown("snd_bits", _ax, _y + 18, _colw, 32, global.DIGI_BIT_NAMES, _bi, "Bit crunch|The volume register has 16 steps, so C64 samples are 4-bit. Fewer bits crush it further for a lo-fi sound.");
++    if (_nbi != _bi)
++    {
++        set_val(_s, "bits", global.DIGI_BITS[_nbi], "sndbits" + string(current_time));
++        sfx_preview_play(_s);
++    }
++    _y += 62;
++    ui_heading(_ax, _y, "Volume  " + string(round(_s.gain)) + "%");
++    set_val(_s, "gain", ui_slider("snd_gain", _ax, _y + 18, _colw, _s.gain, 10, 300, "Volume|Makes the sample louder or quieter before it is crunched. With only 16 steps quiet parts vanish - turning it up helps; above 100% it clips, which can sound great on drums."), "sndgain");
++    _y += 54;
++    var _half = floor((_colw - 12) / 2);
++    ui_heading(_ax, _y, "Start");
++    set_val(_s, "trim_a", ui_slider("snd_trim_a", _ax, _y + 18, _half, _s.trim_a, 0, 990, "Trim start|Cuts silence or unwanted sound from the beginning."), "sndtrima");
++    ui_heading(_ax + _half + 12, _y, "End");
++    set_val(_s, "trim_b", ui_slider("snd_trim_b", _ax + _half + 12, _y + 18, _half, _s.trim_b, 10, 1000, "Trim end|Cuts the end off. Shorter samples use less memory."), "sndtrimb");
++    if (_s.trim_b <= _s.trim_a + 5) { _s.trim_b = min(1000, _s.trim_a + 10); }
++
++    // ---- column 2: the sample as the C64 plays it, and what it costs ----
++    var _d = digi_levels(_s);
++    var _gy = _y1 + 74;
++    ui_heading(_bx, _gy - 18, "As the C64 plays it");
++    var _gh = 170;
++    ui_inset(_bx, _gy, _bx + _colw, _gy + _gh, 10);
++    ui_register("snd_graph", _bx, _gy, _bx + _colw, _gy + _gh, "Waveform|The sample after trimming, resampling and crunching: each step is one of the 16 volume levels the C64 writes to $D418. The yellow line is the sound playing.");
++    var _n = array_length(_d.nib);
++    var _mid = _gy + _gh * 0.5;
++    var _amp = _gh * 0.5 - 10;
++    if (_n > 1)
++    {
++        var _cols = floor(_colw - 20);
++        draw_set_colour(global.TH.accent);
++        for (var c = 0; c < _cols; c++)
++        {
++            var _a = floor(c * _n / _cols);
++            var _e = max(_a + 1, floor((c + 1) * _n / _cols));
++            var _lo = 15;
++            var _hi = 0;
++            for (var k = _a; k < min(_e, _n); k++)
++            {
++                _lo = min(_lo, _d.nib[k]);
++                _hi = max(_hi, _d.nib[k]);
++            }
++            draw_line(_bx + 10 + c, _mid - (_hi - 7.5) / 7.5 * _amp, _bx + 10 + c, _mid - (_lo - 7.5) / 7.5 * _amp + 1);
++        }
++    }
++    var _prog = sfx_preview_progress(_s);
++    if (_prog >= 0)
++    {
++        var _mx = _bx + 10 + _prog * max(1, _colw - 21);
++        draw_line_width_colour(_mx, _gy + 8, _mx, _gy + _gh - 8, 2, global.TH.warn, global.TH.warn);
++    }
++    var _by = _gy + _gh + 12;
++    var _info = string(_n div 2) + " bytes  -  " + string_format(_n / max(1, _d.rate), 1, 2) + " s at " + string(round(_d.rate)) + " Hz";
++    if (_d.capped) { _info += "  (cut to " + string(DIGI_MAX_BYTES div 1024) + " KB: lower the rate to keep more)"; }
++    ui_text(_bx, _by, ui_text_fit(_info, global.f_small, _colw), global.TH.text_dim, fa_left, fa_top, global.f_small, 1);
++    _by += 24;
++    var _cpu = round(digi_cpu(_s) * 100);
++    ui_text_wrap(_bx, _by, "While it plays, the timer interrupt takes about " + string(_cpu) + "% of the C64's time (" + string(round(_d.rate)) + " interrupts a second). In a scrolling map game keep samples short or the rate low, or the game can slow down while one plays.", global.TH.text_faint, _colw, global.f_small, 1);
++}

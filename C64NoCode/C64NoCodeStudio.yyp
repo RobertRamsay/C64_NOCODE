@@ -37,6 +37,7 @@
     {"id":{"name":"scr_asm6502","path":"scripts/scr_asm6502/scr_asm6502.yy",},},
     {"id":{"name":"scr_codegen","path":"scripts/scr_codegen/scr_codegen.yy",},},
     {"id":{"name":"scr_codeview","path":"scripts/scr_codeview/scr_codeview.yy",},},
+    {"id":{"name":"scr_digi","path":"scripts/scr_digi/scr_digi.yy",},},
     {"id":{"name":"scr_engine_gen","path":"scripts/scr_engine_gen/scr_engine_gen.yy",},},
     {"id":{"name":"scr_gfx","path":"scripts/scr_gfx/scr_gfx.yy",},},
     {"id":{"name":"scr_machine","path":"scripts/scr_machine/scr_machine.yy",},},

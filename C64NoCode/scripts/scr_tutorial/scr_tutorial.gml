@@ -63,6 +63,7 @@ function tut_init()
         tut_step(WS_SOUND, "snd_sweep", "Pitch slide", "Make the pitch rise or fall. Falling slides sound like lasers, rising slides like coins and power-ups."),
         tut_step(WS_SOUND, "snd_graph", "Envelope", "Attack, decay, sustain and release shape how the volume changes over time. The picture updates as you move the sliders."),
         tut_step(WS_SOUND, "snd_fmode", "The SID filter", "Low pass, band pass or high pass with resonance and a sweep - filtered noise makes great explosions and wind."),
+        tut_step(WS_SOUND, "snd_kind_1", "Real samples", "Switch a sound to Sample and import a WAV - a voice, a drum, an explosion. The C64 plays it the classic way, 4-bit through the SID volume register, and the page shows what it costs in memory and CPU time."),
         tut_step(WS_SOUND, "snd_preview", "Listen", "Play the sound any time (or press Space). Rules on the Logic page choose when your game plays it."),
         // ---------- MUSIC ----------
         tut_step(WS_MUSIC, "", "Music", "Songs for the SID chip's 3 voices, played by a small music driver inside your game. Sound effects borrow voice 1 or 2 while they play, then the music has the voice back."),

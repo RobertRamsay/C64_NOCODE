@@ -66,6 +66,10 @@ function live_measure()
         var _ss = live_label(_lab, "sid_start", _org);
         var _se = live_label(_lab, "sid_end", _ss);
         live_seg_sound = _se - _ss;
+        // the samples' data counts as sound too
+        var _dgs = live_label(_lab, "dig_start", _org);
+        var _dgn = live_label(_lab, "dig_end", _dgs) - _dgs;
+        live_seg_sound += _dgn;
         var _ms = live_label(_lab, "mus_start", _org);
         live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;
         if (proj.game_type == 1)
@@ -84,10 +88,10 @@ function live_measure()
         {
             var _ve = live_label(_lab, "vars_end", _se);
             var _sp = live_label(_lab, "spr_data", _ve);
-            live_seg_code = _ve - _org - live_seg_sound;
+            live_seg_code = _ve - _org - (live_seg_sound - _dgn);
             live_seg_gap = _sp - _ve;
             live_seg_sprites = SPR_COUNT * 64;
-            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music);
+            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn);
             live_limit = C64_BASIC_END;
             live_spr_end = _sp + live_seg_sprites;
         }

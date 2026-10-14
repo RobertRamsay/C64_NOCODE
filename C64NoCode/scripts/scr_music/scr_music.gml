@@ -208,7 +208,11 @@ function music_inst_ids()
 {
     var _out = [];
     for (var i = 0; i < array_length(global.MUS_INST); i++) { array_push(_out, i); }
-    for (var k = 0; k < array_length(proj.sfx); k++) { array_push(_out, MUS_INST_USER + k); }
+    // samples play through the volume register, not a voice: they can't be music instruments
+    for (var k = 0; k < array_length(proj.sfx); k++)
+    {
+        if (proj.sfx[k].kind != 1) { array_push(_out, MUS_INST_USER + k); }
+    }
     return _out;
 }
 
@@ -431,6 +435,12 @@ function music_inst_compiled(_id, _drum)
     {
         var _k = clamp(_id - MUS_INST_USER, 0, array_length(proj.sfx) - 1);
         var _s = proj.sfx[_k];
+        if (_s.kind == 1)
+        {
+            // a sound that became a sample: the nearest built-in instrument plays instead
+            if (_drum) { return music_inst_compiled(1, true); }
+            return music_inst_compiled(10, false);
+        }
         var _fx = 0;
         if (_drum) { _fx = clamp(_s.pitch, 1, 255); }
         return {
