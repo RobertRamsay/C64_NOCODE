@@ -464,10 +464,11 @@ function ws_world_draw(_x1, _y1, _x2, _y2)
         var _ex = _x + (ev mod 2) * (_half + 12);
         var _ey = _y + (ev div 2) * 52;
         ui_text(_ex, _ey, _evn[ev], global.TH.text_dim, fa_left, fa_top, global.f_small, 1);
+        var _nsnd = array_length(proj.sfx);
         var _cur = _e[$ _evk[ev]];
-        if (_cur > 7) { _cur = 8; }
+        if (_cur >= _nsnd) { _cur = _nsnd; }
         var _nv = ui_dropdown("w_" + _evk[ev], _ex, _ey + 16, _half, 28, _snd, _cur, _evn[ev] + " sound|Which sound plays for this event. Design them on the Sound page.");
-        if (_nv == 8) { _nv = 255; }
+        if (_nv == _nsnd) { _nv = 255; }
         set_val(_e, _evk[ev], _nv, "w" + _evk[ev]);
     }
 

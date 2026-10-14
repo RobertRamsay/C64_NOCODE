@@ -32,7 +32,11 @@ function build_ws_build(_run)
         build_log_add(build_msg + "  (" + string(current_time - _t0) + " ms)", 0);
         for (var i = 0; i < array_length(build_warnings); i++) { build_log_add(build_warnings[i], 1); }
         toast("Build complete!", 0);
-        if (_run) { launch_vice(out_path); }
+        if (_run)
+        {
+            if (proj.machine == MACHINE_ULTIMATE) { u64_send_prg(out_path); }
+            else { launch_vice(out_path); }
+        }
     }
     else
     {
@@ -129,8 +133,18 @@ function ws_build_draw(_x1, _y1, _x2, _y2)
     }
     _y += 54;
     var _rst = BTN_ON;
-    if (os_type != os_windows) { _rst = BTN_GHOST; }
-    if (ui_button("build_run", _fx, _y, _fw, 46, "Build and play in VICE", "Build and play|Builds the program and opens it straight away in the VICE emulator. Joystick: VICE maps it to the keypad or a gamepad - make sure it is in port 2.", _rst))
+    var _plab = "Build and play in VICE   (F5)";
+    var _phelp = "Build and play|Builds the program and opens it straight away in the VICE emulator. Joystick: VICE maps it to the keypad or a gamepad - make sure it is in port 2. F5 or the Build & play button at the top does this from any page.";
+    if (proj.machine == MACHINE_ULTIMATE)
+    {
+        _plab = "Build and run on the C64 Ultimate   (F5)";
+        _phelp = "Build and run on the C64 Ultimate|Builds the program and sends it over your network to the C64 Ultimate (address on the right), which loads and runs it straight away. F5 or the button at the top does this from any page.";
+    }
+    else
+    {
+        if (os_type != os_windows) { _rst = BTN_GHOST; }
+    }
+    if (ui_button("build_run", _fx, _y, _fw, 46, _plab, _phelp, _rst))
     {
         build_ws_build(true);
     }
@@ -160,38 +174,49 @@ function ws_build_draw(_x1, _y1, _x2, _y2)
             settings_save();
         }
     }
-    _y += 70;
+    _y += 66;
 
-    // memory map
-    ui_heading(_fx, _y, "Memory used (after last build)");
+    // memory: the live measurement (the same as the memory bar at the bottom)
+    if (_y + 90 < _y2) { ui_heading(_fx, _y, "Memory (updates as you work)"); }
     _y += 20;
-    ui_inset(_fx, _y, _fx + _fw, _y + 26, 8);
-    if (build_ok)
+    if (_y + 70 < _y2)
     {
-        var _range = 16384 - 2049;
-        var _sprsz = SPR_COUNT * 64;
-        if (proj.game_type == 1) { _range = 32768 - 2049; _sprsz = 2048 + 2048; }
-        var _codew = (build_spr - 2049) / _range * (_fw - 4);
-        var _sprw = _sprsz / _range * (_fw - 4);
-        var _restw = max(0, (build_end - build_spr - _sprsz) / _range * (_fw - 4));
-        ui_rrect(_fx + 2, _y + 2, _fx + 2 + _codew, _y + 24, 6, global.TH.accent, global.TH.accent_dark, 1);
-        ui_rrect(_fx + 2 + _codew, _y + 2, _fx + 2 + _codew + _sprw, _y + 24, 4, global.TH.warn, merge_colour(global.TH.warn, c_black, 0.3), 1);
-        ui_rrect(_fx + 2 + _codew + _sprw, _y + 2, _fx + 2 + _codew + _sprw + _restw, _y + 24, 4, global.TH.accent2, merge_colour(global.TH.accent2, c_black, 0.3), 1);
-        ui_register("build_mem", _fx, _y, _fx + _fw, _y + 26, "Memory map|Blue: program code. Yellow: sprites. Green: screen and colour data. The C64 has plenty of room left!");
-        _y += 34;
-        ui_text(_fx, _y, "Code   Sprites   Screen data      " + string(build_size) + " bytes", global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
-    }
-    else
-    {
-        ui_text(_fx + 12, _y + 13, "Build to see the memory map", global.TH.text_faint, fa_left, fa_middle, global.f_small, 1);
+        if (live_ok)
+        {
+            var _mn = ["Code from your rules", "SID player + sounds", "Sprites (32 x 64 bytes)", "Screen + colour data"];
+            var _mv = [live_seg_code, live_seg_sound, live_seg_sprites, live_seg_data];
+            var _mc = [global.TH.accent, global.TH.warn, make_colour_rgb(240, 150, 60), global.TH.accent2];
+            if (proj.game_type == 1)
+            {
+                _mn = ["Scrolling engine", "SID player + sounds", "Sprites + charset", "Tiles, enemies + maps"];
+            }
+            var _cw2 = floor(_fw / 2);
+            for (var mi = 0; mi < array_length(_mn); mi++)
+            {
+                var _mx = _fx + (mi mod 2) * _cw2;
+                var _my = _y + (mi div 2) * 22;
+                draw_circle_colour(_mx + 6, _my + 9, 5, _mc[mi], _mc[mi], false);
+                ui_text(_mx + 18, _my + 9, ui_text_fit(_mn[mi] + "  " + string(_mv[mi]), global.f_small, _cw2 - 22), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
+            }
+            ui_text(_fx, _y + 54, ui_text_fit("Program: $0801-$" + string_upper(dec_to_hex(live_end - 1)) + ", " + string(live_size) + " bytes on disk.", global.f_small, _fw), global.TH.text_faint, fa_left, fa_middle, global.f_small, 1);
+            ui_register("build_mem", _fx, _y - 20, _fx + _fw, _y + 64, "Memory|What your game is made of, measured a moment after each change (the bar at the bottom of the screen shows the same). Sprites must sit where the VIC-II chip can see them - below $4000 - so very long rule lists push them out and the build fails.");
+        }
+        else
+        {
+            var _mt = "Measuring...";
+            if (!live_stale && live_err != "") { _mt = "Cannot build yet: " + live_err; }
+            ui_text(_fx, _y + 10, ui_text_fit(_mt, global.f_small, _fw), global.TH.text_faint, fa_left, fa_middle, global.f_small, 1);
+        }
     }
 
     // ---------------- log / listing ----------------
     var _rx = _x1 + _lw + 12;
-    ui_panel(_rx, _y1, _x2, _y2, "Build log");
-    build_show_asm = ui_toggle("build_showasm", _x2 - 290, _y1 + 12, "Show the 6502 code", build_show_asm, "6502 code|For the curious: shows the assembly language the studio wrote for you. You never need to edit it.");
+    var _uh = u64_panel_draw(_rx, _y1, _x2);
+    var _ry1 = _y1 + _uh + 12;
+    ui_panel(_rx, _ry1, _x2, _y2, "Build log");
+    build_show_asm = ui_toggle("build_showasm", _x2 - 290, _ry1 + 12, "Show the 6502 code", build_show_asm, "6502 code|For the curious: shows the assembly language the studio wrote for you. You never need to edit it. The Logic page shows it live, rule by rule.");
     var _lx1 = _rx + 14;
-    var _ly1 = _y1 + 52;
+    var _ly1 = _ry1 + 52;
     var _lx2 = _x2 - 14;
     var _ly2 = _y2 - 12;
     ui_inset(_lx1, _ly1, _lx2, _ly2, 10);
@@ -234,4 +259,60 @@ function ws_build_draw(_x1, _y1, _x2, _y2)
             if (_ly > _ly2 - 20) { break; }
         }
     }
+}
+
+/// The C64 Ultimate panel on the Build page (address, password, test / run / reset). Returns its height.
+function u64_panel_draw(_x1, _y1, _x2)
+{
+    var _h = 214;
+    var _y2 = _y1 + _h;
+    var _title = "C64 Ultimate on your network";
+    if (proj.machine == MACHINE_ULTIMATE) { _title += "  (target)"; }
+    ui_panel(_x1, _y1, _x2, _y2, _title);
+    var _fx = _x1 + 20;
+    var _fw = _x2 - _x1 - 40;
+    var _y = _y1 + 54;
+    var _aw = floor(_fw * 0.62);
+    var _pw = _fw - _aw - 10;
+    ui_heading(_fx, _y, "Address (IP or name)");
+    var _ip = ui_textfield("u64_ip", _fx, _y + 18, _aw, 32, u64_ip, 64, "Ultimate address|The network address of your C64 Ultimate, Ultimate 64 or 1541 Ultimate II+ - shown on its screen under F2 > Network settings (for example 192.168.1.64). Turn on 'Web Remote Control Service' there too.");
+    if (_ip != u64_ip)
+    {
+        u64_ip = _ip;
+        settings_save();
+    }
+    ui_heading(_fx + _aw + 10, _y, "Password");
+    var _pwd = ui_textfield("u64_pw", _fx + _aw + 10, _y + 18, _pw, 32, u64_password, 32, "Network password|Only if you gave your Ultimate a network password. Leave it empty otherwise. It is kept in the studio's settings on this computer.");
+    if (_pwd != u64_password)
+    {
+        u64_password = _pwd;
+        settings_save();
+    }
+    if (ui_focus != "u64_pw" && u64_password != "")
+    {
+        // hidden unless you are typing it
+        ui_inset(_fx + _aw + 10, _y + 18, _fx + _aw + 10 + _pw, _y + 50, 8);
+        ui_text(_fx + _aw + 20, _y + 34, ui_text_fit(string_repeat("*", string_length(u64_password)), global.f_body, _pw - 20), global.TH.text, fa_left, fa_middle, global.f_body, 1);
+    }
+    _y += 58;
+    var _bx = _fx;
+    var _bw = floor((_fw - 16) / 3);
+    if (ui_button("u64_test", _bx, _y, _bw, 32, "Test", "Test the address|Asks the Ultimate for its version (GET /v1/version) to check the address and password.", BTN_NORMAL)) { u64_ping(); }
+    if (ui_button("u64_run", _bx + _bw + 8, _y, _bw, 32, "Send & run", "Build, send and run|Builds the .PRG and sends it to the Ultimate (POST /v1/runners:run_prg), which loads it into memory and runs it - no disks, no SD card.", BTN_ACCENT))
+    {
+        build_ws_build(false);
+        if (build_ok) { u64_send_prg(out_path); }
+    }
+    if (ui_button("u64_reset", _bx + (_bw + 8) * 2, _y, _bw, 32, "Reset C64", "Reset|Resets the C64 on the Ultimate (PUT /v1/machine:reset), back to the READY prompt.", BTN_GHOST)) { u64_reset(); }
+    _y += 42;
+    var _msg = u64_status;
+    var _col = global.TH.text_dim;
+    if (u64_status_kind == 2) { _col = global.TH.danger; }
+    if (_msg == "")
+    {
+        _msg = "Plays your game on a real C64: the C64 Ultimate loads it straight into memory over the network. Pick 'C64 Ultimate' in the top bar and F5 sends it every time.";
+        _col = global.TH.text_faint;
+    }
+    ui_text_wrap(_fx, _y, _msg, _col, _fw, global.f_small, 1);
+    return _h;
 }

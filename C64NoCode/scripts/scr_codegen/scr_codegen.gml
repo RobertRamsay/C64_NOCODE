@@ -38,15 +38,111 @@ function cg_join_bytes(_arr, _from, _count)
     return _s;
 }
 
-/// Returns { src, warnings[] }
+/// The DO actions that change an actor (their target is an actor)
+function cg_act_needs_actor(_act)
+{
+    return (_act == 4 || _act == 5 || _act == 6 || _act == 7 || _act == 8 || _act == 12 || _act == 13 || _act == 15);
+}
+
+/// Pushes one DO line as a subroutine body (it ends with rts or a jmp to a routine that returns)
+function cg_do_lines(L, _p, _d, _tag, na)
+{
+    var _acts = _p.actors;
+    var _act = _d.act;
+    var _tg = _d.target;
+    var _ts = string(_tg);
+    if (cg_act_needs_actor(_act) && _tg >= na)
+    {
+        array_push(L, " rts");
+        return;
+    }
+    switch (_act)
+    {
+        case 0:
+            var _sb = cg_bcd(max(1, _d.value));
+            array_push(L, " lda #" + string(_sb[1]), " ldx #" + string(_sb[0]), " jmp add_score");
+            break;
+        case 1:
+            array_push(L, " lda lives", " beq la" + _tag, " dec lives", "la" + _tag + ":", " jmp draw_hud");
+            break;
+        case 2:
+            array_push(L, " lda #" + string(clamp(_d.value, 0, array_length(_p.sfx) - 1)), " jmp play_sfx");
+            break;
+        case 3:
+            array_push(L, " lda #16", " sta flash", " rts");
+            break;
+        case 4:
+            var _sx = clamp(floor(_acts[_tg].x), CG_XMIN, CG_XMAX);
+            var _sy = clamp(floor(_acts[_tg].y), CG_YMIN, CG_YMAX);
+            array_push(L, " lda #" + string(_sx & 255), " sta ax_lo+" + _ts, " lda #" + string(_sx >> 8), " sta ax_hi+" + _ts);
+            array_push(L, " lda #" + string(_sy), " sta ay+" + _ts, " rts");
+            break;
+        case 5:
+            array_push(L, " lda $d41b", " clc", " adc #" + string(CG_XMIN), " sta ax_lo+" + _ts, " lda #0", " adc #0", " sta ax_hi+" + _ts);
+            array_push(L, " lda $d41b", " and #127", " clc", " adc #60", " sta ay+" + _ts, " rts");
+            break;
+        case 6:
+            array_push(L, " lda #0", " sta avis+" + _ts, " rts");
+            break;
+        case 7:
+            array_push(L, " lda #1", " sta avis+" + _ts, " rts");
+            break;
+        case 8:
+            array_push(L, " lda #" + string(clamp(_d.value, 0, 15)), " sta $d027+" + _ts, " rts");
+            break;
+        case 9:
+            array_push(L, " lda #" + string(clamp(_d.value, 0, 15)), " sta $d021", " rts");
+            break;
+        case 10:
+            array_push(L, " ldx #<txt_over", " ldy #>txt_over", " jmp end_screen");
+            break;
+        case 11:
+            array_push(L, " ldx #<txt_win", " ldy #>txt_win", " jmp end_screen");
+            break;
+        case 12:
+            array_push(L, " lda aspd+" + _ts, " cmp #8", " bcs sp" + _tag, " inc aspd+" + _ts, "sp" + _tag + ":", " rts");
+            break;
+        case 13:
+            array_push(L, " lda aspd+" + _ts, " cmp #2", " bcc sl" + _tag, " dec aspd+" + _ts, "sl" + _tag + ":", " rts");
+            break;
+        case 14:
+            array_push(L, " lda lives", " cmp #9", " bcs al" + _tag, " inc lives", "al" + _tag + ":", " jmp draw_hud");
+            break;
+        case 15:
+            var _to = clamp(_d.value, 0, max(0, na - 1));
+            var _os = string(_to);
+            array_push(L, " lda ax_lo+" + _os, " sta ax_lo+" + _ts, " lda ax_hi+" + _os, " sta ax_hi+" + _ts);
+            array_push(L, " lda ay+" + _os, " sta ay+" + _ts, " rts");
+            break;
+        case 16:
+            array_push(L, " jmp sfx_stop");
+            break;
+        default:
+            array_push(L, " rts");
+            break;
+    }
+}
+
+/// Returns { src, warnings[], lines[], marks[] } - marks are { rule, from, to } line ranges
+/// (the rule's check and its actions) for the code previewer.
 function codegen_project(_p)
 {
     var L = [];
     var _warn = [];
+    var _marks = [];
     var _acts = _p.actors;
     var na = min(8, array_length(_acts));
     var _rules = _p.rules;
     var nr = array_length(_rules);
+    // a rule in a group that is switched off (or inside one) is left out of the game
+    var _on = array_create(nr, true);
+    var _non = 0;
+    for (var ro = 0; ro < nr; ro++)
+    {
+        _on[ro] = !group_off_in(_p.groups, _rules[ro].group);
+        if (_on[ro]) { _non += 1; }
+    }
+    if (_non < nr) { array_push(_warn, string(nr - _non) + " rule(s) are in groups that are switched off - they are not in the game."); }
     var _player = -1;
     for (var i = 0; i < na; i++)
     {
@@ -61,9 +157,14 @@ function codegen_project(_p)
     var _chase_target = _player;
     if (_chase_target < 0) { _chase_target = 0; }
 
-    var _varlen = 7 * 8 + max(1, nr) + 15;
+    var _names = ["ax_lo", "ax_hi", "ay", "aspd", "avis", "adx", "ady", "latch",
+                  "joy", "fcount", "sectick", "coll", "bcoll", "tmp", "tmp2", "lives", "score_lo", "score_hi", "flash", "acnt"];
+    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    var _varlen = 0;
+    for (var vl = 0; vl < array_length(_sizes); vl++) { _varlen += _sizes[vl]; }
 
     array_push(L, "; Generated by C64 No-Code Studio - " + _p.name);
+    array_push(L, "; Target: " + machine_cur().name + " - " + string(sid_fps()) + " frames a second");
     array_push(L, "* = $0801");
     array_push(L, " .byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00");
     array_push(L, "ptr = $fb");
@@ -83,7 +184,7 @@ function codegen_project(_p)
         array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
     }
     array_push(L, " inx", " cpx #250", " bne cpy1");
-    array_push(L, " lda #$8f", " sta $d418");
+    array_push(L, " jsr sfx_init");
 
     var _mc = 0;
     for (var a = 0; a < na; a++)
@@ -114,10 +215,16 @@ function codegen_project(_p)
     array_push(L, " lda #" + string(_p.mc1), " sta $d025", " lda #" + string(_p.mc2), " sta $d026");
     array_push(L, " lda #0", " sta $d017", " sta $d01d", " sta $d01b");
     array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
-    array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e");
+    array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e", " lda $d01f");
     for (var r0 = 0; r0 < nr; r0++)
     {
-        if (_rules[r0].when == 5) { array_push(L, " jsr ract_" + string(r0)); }
+        if (_on[r0] && _rules[r0].when == 5)
+        {
+            var _m0 = { rule : r0, from : array_length(L), to : 0 };
+            array_push(L, "; Rule " + string(r0 + 1) + ": " + logic_sentence(_rules[r0]), " jsr ract_" + string(r0));
+            _m0.to = array_length(L);
+            array_push(_marks, _m0);
+        }
     }
     array_push(L, "mainloop:", "wr1:", " lda $d012", " cmp #250", " bne wr1", " jsr frame", " jmp mainloop");
 
@@ -125,7 +232,7 @@ function codegen_project(_p)
     array_push(L, "frame:");
     array_push(L, " lda $dc00", " eor #$ff", " and #$1f", " sta joy");
     array_push(L, " inc acnt");
-    array_push(L, " lda #0", " sta sectick", " inc fcount", " lda fcount", " cmp #50", " bcc fr1", " lda #0", " sta fcount", " inc sectick");
+    array_push(L, " lda #0", " sta sectick", " inc fcount", " lda fcount", " cmp #" + string(sid_fps()), " bcc fr1", " lda #0", " sta fcount", " inc sectick");
     array_push(L, "fr1:");
 
     for (var m = 0; m < na; m++)
@@ -184,18 +291,37 @@ function codegen_project(_p)
             array_push(L, "cz" + t + ":");
         }
     }
-    array_push(L, " jsr place_sprites", " lda $d01e", " sta coll");
+    // sprite-sprite ($D01E) and sprite-background ($D01F) collisions: reading clears them
+    array_push(L, " jsr place_sprites", " lda $d01e", " sta coll", " lda $d01f", " sta bcoll");
 
     // ---------------- rules ----------------
     for (var r = 0; r < nr; r++)
     {
         var _ru = _rules[r];
+        if (!_on[r]) { continue; }
         var rt = "_" + string(r);
         var rs = string(r);
         var _w = _ru.when;
+        var _mk = { rule : r, from : array_length(L), to : 0 };
+        array_push(L, "; Rule " + string(r + 1) + ": " + logic_sentence(_ru), "rchk_" + rs + ":");
+        if (_w == 6)
+        {
+            if (_ru.a < na)
+            {
+                array_push(L, " lda bcoll", " and #" + string(1 << _ru.a), " beq rn" + rt);
+                array_push(L, " lda latch+" + rs, " bne rd" + rt, " lda #1", " sta latch+" + rs, " jsr ract_" + rs, " jmp rd" + rt);
+                array_push(L, "rn" + rt + ":", " lda #0", " sta latch+" + rs, "rd" + rt + ":");
+            }
+        }
         if (_w == 0)
         {
-            if (_ru.a >= na || _ru.b >= na) { continue; }
+            if (_ru.a >= na || _ru.b >= na)
+            {
+                array_push(L, "rchk_" + rs + "_e:");
+                _mk.to = array_length(L);
+                array_push(_marks, _mk);
+                continue;
+            }
             if (_ru.a == _ru.b)
             {
                 array_push(L, " lda coll", " and #" + string(1 << _ru.a), " beq rn" + rt);
@@ -230,11 +356,13 @@ function codegen_project(_p)
         {
             array_push(L, " lda lives", " bne rd" + rt, " lda latch+" + rs, " bne rd" + rt, " lda #1", " sta latch+" + rs, " jsr ract_" + rs, "rd" + rt + ":");
         }
+        array_push(L, "rchk_" + rs + "_e:");
+        _mk.to = array_length(L);
+        array_push(_marks, _mk);
     }
 
     // ---------------- sound + border flash ----------------
-    array_push(L, " lda sfx_t", " beq fx0", " lda sfx_fh", " clc", " adc sfx_sw", " sta sfx_fh", " sta $d401");
-    array_push(L, " dec sfx_t", " bne fx0", " lda sfx_w", " and #$fe", " sta $d404", "fx0:");
+    array_push(L, " jsr sfx_update");
     array_push(L, " lda flash", " beq fl0", " dec flash", " beq fl1", " and #2", " beq fl1", " lda #1", " sta $d020", " rts");
     array_push(L, "fl1:", " lda #" + string(_p.border), " sta $d020", "fl0:", " rts");
 
@@ -301,116 +429,55 @@ function codegen_project(_p)
     array_push(L, "add_score:", " sed", " clc", " adc score_lo", " sta score_lo", " txa", " adc score_hi", " sta score_hi", " cld", " bcc as1");
     array_push(L, " lda #$99", " sta score_lo", " sta score_hi", "as1:", " jmp draw_hud");
 
-    array_push(L, "play_sfx:", " lda #0", " sta $d404");
-    array_push(L, " lda sfxt_ad,x", " sta $d405", " lda sfxt_sr,x", " sta $d406");
-    array_push(L, " lda #0", " sta $d400", " lda #8", " sta $d403");
-    array_push(L, " lda sfxt_f,x", " sta sfx_fh", " sta $d401");
-    array_push(L, " lda sfxt_sw,x", " sta sfx_sw", " lda sfxt_len,x", " sta sfx_t");
-    array_push(L, " lda sfxt_w,x", " sta sfx_w", " ora #1", " sta $d404", " rts");
-
-    array_push(L, "end_screen:", " stx ptr", " sty ptr+1", " lda #0", " sta $d404", " sta $d015", " ldy #0");
+    array_push(L, "end_screen:", " stx ptr", " sty ptr+1", " jsr sfx_stop", " lda #0", " sta $d015", " ldy #0");
     array_push(L, "es1:", " lda (ptr),y", " cmp #$ff", " beq es2", " sta $0400+480,y", " lda #1", " sta $d800+480,y", " iny", " bne es1", "es2:");
     array_push(L, "es3:", " lda $dc00", " and #16", " beq es3");
     array_push(L, "es4:", " lda $dc00", " and #16", " bne es4");
     array_push(L, "es5:", " lda $dc00", " and #16", " beq es5");
     array_push(L, " ldx #$ff", " txs", " jmp restart");
 
-    // ---------------- rule actions ----------------
+    // ---------------- rule actions: one subroutine per card, its DO lines run in order ----------------
     for (var ra = 0; ra < nr; ra++)
     {
+        if (!_on[ra]) { continue; }
         var _rr = _rules[ra];
         var as_ = string(ra);
+        var _ma = { rule : ra, from : array_length(L), to : 0 };
+        var _dos = [_rr];
+        for (var md = 0; md < array_length(_rr.more); md++) { array_push(_dos, _rr.more[md]); }
+        array_push(L, "; Rule " + string(ra + 1) + " does: " + logic_do_list(_rr));
         array_push(L, "ract_" + as_ + ":");
-        var _act = _rr.act;
-        var _tg = _rr.target;
-        var _ts = string(_tg);
-        var _needs_actor = (_act == 4 || _act == 5 || _act == 6 || _act == 7 || _act == 8 || _act == 12);
-        if (_needs_actor && _tg >= na)
+        if (array_length(_dos) == 1)
         {
-            array_push(L, " rts");
-            continue;
+            cg_do_lines(L, _p, _rr, "_" + as_, na);
         }
-        switch (_act)
+        else
         {
-            case 0:
-                var _sb = cg_bcd(max(1, _rr.value));
-                array_push(L, " lda #" + string(_sb[1]), " ldx #" + string(_sb[0]), " jmp add_score");
-                break;
-            case 1:
-                array_push(L, " lda lives", " beq la_" + as_, " dec lives", "la_" + as_ + ":", " jmp draw_hud");
-                break;
-            case 2:
-                array_push(L, " ldx #" + string(clamp(_rr.value, 0, 7)), " jmp play_sfx");
-                break;
-            case 3:
-                array_push(L, " lda #16", " sta flash", " rts");
-                break;
-            case 4:
-                var _sx = clamp(floor(_acts[_tg].x), CG_XMIN, CG_XMAX);
-                var _sy = clamp(floor(_acts[_tg].y), CG_YMIN, CG_YMAX);
-                array_push(L, " lda #" + string(_sx & 255), " sta ax_lo+" + _ts, " lda #" + string(_sx >> 8), " sta ax_hi+" + _ts);
-                array_push(L, " lda #" + string(_sy), " sta ay+" + _ts, " rts");
-                break;
-            case 5:
-                array_push(L, " lda $d41b", " clc", " adc #" + string(CG_XMIN), " sta ax_lo+" + _ts, " lda #0", " adc #0", " sta ax_hi+" + _ts);
-                array_push(L, " lda $d41b", " and #127", " clc", " adc #60", " sta ay+" + _ts, " rts");
-                break;
-            case 6:
-                array_push(L, " lda #0", " sta avis+" + _ts, " rts");
-                break;
-            case 7:
-                array_push(L, " lda #1", " sta avis+" + _ts, " rts");
-                break;
-            case 8:
-                array_push(L, " lda #" + string(clamp(_rr.value, 0, 15)), " sta $d027+" + _ts, " rts");
-                break;
-            case 9:
-                array_push(L, " lda #" + string(clamp(_rr.value, 0, 15)), " sta $d021", " rts");
-                break;
-            case 10:
-                array_push(L, " ldx #<txt_over", " ldy #>txt_over", " jmp end_screen");
-                break;
-            case 11:
-                array_push(L, " ldx #<txt_win", " ldy #>txt_win", " jmp end_screen");
-                break;
-            case 12:
-                array_push(L, " lda aspd+" + _ts, " cmp #8", " bcs sp_" + as_, " inc aspd+" + _ts, "sp_" + as_ + ":", " rts");
-                break;
-            default:
-                array_push(L, " rts");
-                break;
+            for (var dj = 0; dj < array_length(_dos) - 1; dj++) { array_push(L, " jsr ract_" + as_ + "_" + string(dj)); }
+            array_push(L, " jmp ract_" + as_ + "_" + string(array_length(_dos) - 1));
+            for (var dk = 0; dk < array_length(_dos); dk++)
+            {
+                var _dt = "_" + as_ + "_" + string(dk);
+                array_push(L, "ract" + _dt + ":");
+                cg_do_lines(L, _p, _dos[dk], _dt, na);
+            }
         }
+        array_push(L, "ract_" + as_ + "_e:");
+        _ma.to = array_length(L);
+        array_push(_marks, _ma);
     }
 
     array_push(L, "txt_over:", " .byte " + cg_text_bytes(_p.over_text));
     array_push(L, "txt_win:", " .byte " + cg_text_bytes(_p.win_text));
 
-    var _ad = "", _sr = "", _f = "", _sw = "", _len = "", _wv = "";
-    var _waves = [16, 32, 64, 128];
-    for (var sfi = 0; sfi < 8; sfi++)
-    {
-        var _sf = _p.sfx[sfi];
-        var _sep = ",";
-        if (sfi == 0) { _sep = ""; }
-        _ad += _sep + string((clamp(_sf.atk, 0, 15) << 4) | clamp(_sf.dec, 0, 15));
-        _sr += _sep + string((clamp(_sf.sus, 0, 15) << 4) | clamp(_sf.rel, 0, 15));
-        _f += _sep + string(clamp(_sf.pitch, 1, 255));
-        _sw += _sep + string(clamp(_sf.sweep, -8, 8) & 255);
-        _len += _sep + string(clamp(_sf.len, 1, 200));
-        _wv += _sep + string(_waves[clamp(_sf.wave, 0, 3)]);
-    }
-    array_push(L, "sfxt_ad:", " .byte " + _ad, "sfxt_sr:", " .byte " + _sr, "sfxt_f:", " .byte " + _f);
-    array_push(L, "sfxt_sw:", " .byte " + _sw, "sfxt_len:", " .byte " + _len, "sfxt_w:", " .byte " + _wv);
+    sid_emit(L, _p);
 
-    var _names = ["ax_lo", "ax_hi", "ay", "aspd", "avis", "adx", "ady", "latch",
-                  "joy", "fcount", "sectick", "coll", "tmp", "tmp2", "lives", "score_lo", "score_hi",
-                  "sfx_t", "sfx_fh", "sfx_sw", "sfx_w", "flash", "acnt"];
-    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     array_push(L, "vars:");
     for (var v = 0; v < array_length(_names); v++)
     {
         array_push(L, _names[v] + ":", " .fill " + string(_sizes[v]) + ",0");
     }
+    array_push(L, "vars_end:");
 
     array_push(L, " .padto $2000", " .align 64", "spr_data:");
     for (var sp = 0; sp < SPR_COUNT; sp++)
@@ -423,7 +490,7 @@ function codegen_project(_p)
     array_push(L, "col_data:");
     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
 
-    return { src : string_join_ext("\n", L), warnings : _warn, lines : L };
+    return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }
 
 /// Full build: codegen + assemble + save PRG. Returns result struct.
@@ -444,7 +511,7 @@ function build_prg(_path)
     if (_spr + SPR_COUNT * 64 > 16384)
     {
         build_ok = false;
-        build_msg = "Build failed - the game is too big for the sprite area (ends at $" + string_upper(dec_to_hex(_end)) + ").";
+        build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr + SPR_COUNT * 64)) + ", past $4000 where the VIC-II can see them. Use fewer rules or switch a group off.";
         return false;
     }
     var _b = buffer_create(array_length(_res.bytes) + 2, buffer_fixed, 1);

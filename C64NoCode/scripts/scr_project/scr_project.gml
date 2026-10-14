@@ -5,15 +5,17 @@
 function project_defs_init()
 {
     global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)"];
-    global.WHEN_NAMES = ["Actor touches actor", "Fire button is pressed", "Every few seconds", "Score reaches", "Lives run out", "The game starts"];
+    global.WHEN_NAMES = ["Actor touches actor", "Fire button is pressed", "Every few seconds", "Score reaches", "Lives run out", "The game starts",
+                         "Actor hits the scenery"];
     global.DO_NAMES   = ["Add to score", "Lose a life", "Play a sound", "Flash the border", "Send actor back to start",
                          "Move actor to a random spot", "Hide actor", "Show actor", "Change actor colour",
-                         "Change background colour", "Game over", "You win!", "Speed up actor"];
-    global.WAVE_NAMES = ["Triangle (soft)", "Sawtooth (buzzy)", "Pulse (classic)", "Noise (crunchy)"];
-    global.SFX_PRESET_NAMES = ["Coin", "Laser", "Explosion", "Jump", "Hit", "Power up", "Lose", "Blip"];
+                         "Change background colour", "Game over", "You win!", "Speed up actor",
+                         "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds"];
     global.TEMPLATE_NAMES = ["Player touches enemy: lose a life", "Player touches pickup: score + move pickup",
                              "Score target: you win", "Out of lives: game over", "Every 10 seconds: speed up enemy",
                              "Fire button: play a sound"];
+    sid_defs_init();
+    machine_defs_init();
 }
 
 function sprite_new(_name)
@@ -46,37 +48,19 @@ function actor_new(_name)
     };
 }
 
+#macro RULE_DOS_MAX 5
+#macro RULES_MAX 100
+
+/// A WHEN / DO rule card: the first DO is on the rule itself, AND DO lines are in more
 function rule_new()
 {
-    return { when : 0, a : 0, b : 1, n : 1, act : 0, target : 0, value : 10 };
+    return { when : 0, a : 0, b : 1, n : 1, act : 0, target : 0, value : 10, more : [], group : -1 };
 }
 
-function sfx_new(_name)
+/// One AND DO line on a rule card
+function do_new()
 {
-    return { name : _name, wave : 2, pitch : 60, sweep : 0, len : 10, atk : 0, dec : 8, sus : 0, rel : 6 };
-}
-
-function sfx_apply_preset(_s, _p)
-{
-    var _t = [
-        [2, 60, 6, 8, 0, 6, 0, 4],
-        [1, 120, -8, 12, 0, 8, 0, 6],
-        [3, 40, -1, 25, 0, 10, 0, 9],
-        [0, 30, 4, 14, 0, 7, 4, 5],
-        [3, 14, 0, 6, 0, 5, 0, 3],
-        [2, 40, 3, 30, 2, 6, 8, 6],
-        [0, 50, -2, 30, 0, 9, 6, 8],
-        [2, 90, 0, 3, 0, 3, 0, 2]
-    ];
-    var _v = _t[clamp(_p, 0, 7)];
-    _s.wave = _v[0];
-    _s.pitch = _v[1];
-    _s.sweep = _v[2];
-    _s.len = _v[3];
-    _s.atk = _v[4];
-    _s.dec = _v[5];
-    _s.sus = _v[6];
-    _s.rel = _v[7];
+    return { act : 2, target : 0, value : 0 };
 }
 
 function project_new()
@@ -100,7 +84,10 @@ function project_new()
         hud_row : 0,
         hud_colour : 1,
         over_text : "GAME OVER - PRESS FIRE",
-        win_text : "YOU WIN! - PRESS FIRE"
+        win_text : "YOU WIN! - PRESS FIRE",
+        sound_groups : [],
+        groups : [],
+        machine : MACHINE_PAL
     };
     for (var i = 0; i < 8; i++)
     {
@@ -212,20 +199,22 @@ function project_example()
     _a3.sprite = 3; _a3.colour = 3; _a3.role = 5; _a3.speed = 1; _a3.x = 250; _a3.y = 190;
     _p.actors = [_a0, _a1, _a2, _a3];
 
+    // rule cards (a DO plus AND DO lines) in three groups
+    _p.groups = [group_new("Ghosts"), group_new("Gems"), group_new("Winning and losing")];
     _p.rules = [];
     var _r;
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 1; _r.act = 1; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 1; _r.act = 4; _r.target = 0; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 1; _r.act = 2; _r.value = 6; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 2; _r.act = 1; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 2; _r.act = 4; _r.target = 0; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 2; _r.act = 3; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 3; _r.act = 0; _r.value = 10; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 3; _r.act = 5; _r.target = 3; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 0; _r.a = 0; _r.b = 3; _r.act = 2; _r.value = 0; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 2; _r.n = 10; _r.act = 12; _r.target = 2; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 3; _r.n = 200; _r.act = 11; array_push(_p.rules, _r);
-    _r = rule_new(); _r.when = 4; _r.act = 10; array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 0; _r.when = 0; _r.a = 0; _r.b = 1; _r.act = 1;
+    array_push(_r.more, { act : 4, target : 0, value : 0 }, { act : 2, target : 0, value : 6 });
+    array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 0; _r.when = 0; _r.a = 0; _r.b = 2; _r.act = 1;
+    array_push(_r.more, { act : 4, target : 0, value : 0 }, { act : 3, target : 0, value : 0 });
+    array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 0; _r.when = 2; _r.n = 10; _r.act = 12; _r.target = 2; array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 1; _r.when = 0; _r.a = 0; _r.b = 3; _r.act = 0; _r.value = 10;
+    array_push(_r.more, { act : 5, target : 3, value : 0 }, { act : 2, target : 0, value : 0 });
+    array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 2; _r.when = 3; _r.n = 200; _r.act = 11; array_push(_p.rules, _r);
+    _r = rule_new(); _r.group = 2; _r.when = 4; _r.act = 10; array_push(_p.rules, _r);
     return _p;
 }
 
@@ -247,7 +236,6 @@ function project_from_loaded(_raw)
     var _p = project_new();
     if (!is_struct(_raw)) { return _p; }
     var _sprites = _p.sprites;
-    var _sfx = _p.sfx;
     struct_overlay(_p, _raw);
     if (!is_array(_p.chars) || array_length(_p.chars) != 1000) { _p.chars = array_create(1000, 32); }
     if (!is_array(_p.cols) || array_length(_p.cols) != 1000) { _p.cols = array_create(1000, 14); }
@@ -263,13 +251,23 @@ function project_from_loaded(_raw)
     }
     _p.sprites = _sprites;
 
-    var _lf = _raw[$ "sfx"];
-    for (var j = 0; j < 8; j++)
+    _p.sfx = sfx_list_from_loaded(_raw[$ "sfx"]);
+    var _sg = [];
+    var _lsg = _raw[$ "sound_groups"];
+    if (is_array(_lsg))
     {
-        var _f = _sfx[j];
-        if (is_array(_lf) && j < array_length(_lf)) { struct_overlay(_f, _lf[j]); }
+        for (var sg = 0; sg < array_length(_lsg); sg++)
+        {
+            array_push(_sg, struct_overlay({ name : "Folder " + string(sg + 1), open : true }, _lsg[sg]));
+        }
     }
-    _p.sfx = _sfx;
+    _p.sound_groups = _sg;
+    for (var sf = 0; sf < array_length(_p.sfx); sf++)
+    {
+        if (_p.sfx[sf].group >= array_length(_sg)) { _p.sfx[sf].group = -1; }
+    }
+    if (!is_numeric(_p.machine)) { _p.machine = MACHINE_PAL; }
+    _p.machine = clamp(floor(_p.machine), 0, MACHINE_COUNT - 1);
 
     var _acts = [];
     var _la = _raw[$ "actors"];
@@ -282,13 +280,41 @@ function project_from_loaded(_raw)
     }
     _p.actors = _acts;
 
+    var _grps = [];
+    var _lg = _raw[$ "groups"];
+    if (is_array(_lg))
+    {
+        for (var g = 0; g < array_length(_lg); g++)
+        {
+            var _gp = struct_overlay(group_new("Group " + string(g + 1)), _lg[g]);
+            if (!is_numeric(_gp.parent)) { _gp.parent = -1; }
+            array_push(_grps, _gp);
+        }
+    }
+    for (var g2 = 0; g2 < array_length(_grps); g2++)
+    {
+        if (_grps[g2].parent >= array_length(_grps) || _grps[g2].parent == g2) { _grps[g2].parent = -1; }
+    }
+    _p.groups = _grps;
+
     var _rules = [];
     var _lr = _raw[$ "rules"];
     if (is_array(_lr))
     {
-        for (var m = 0; m < array_length(_lr); m++)
+        for (var m = 0; m < min(RULES_MAX, array_length(_lr)); m++)
         {
-            array_push(_rules, struct_overlay(rule_new(), _lr[m]));
+            var _ru = struct_overlay(rule_new(), _lr[m]);
+            var _more = [];
+            if (is_array(_ru.more))
+            {
+                for (var md = 0; md < min(RULE_DOS_MAX - 1, array_length(_ru.more)); md++)
+                {
+                    array_push(_more, struct_overlay(do_new(), _ru.more[md]));
+                }
+            }
+            _ru.more = _more;
+            if (!is_numeric(_ru.group) || _ru.group >= array_length(_grps)) { _ru.group = -1; }
+            array_push(_rules, _ru);
         }
     }
     _p.rules = _rules;
@@ -409,13 +435,17 @@ function project_after_change()
     for (var i = 0; i < SPR_COUNT; i++) { spr_dirty[i] = true; }
     charset_dirty = true;
     sel_actor = clamp(sel_actor, 0, max(0, array_length(proj.actors) - 1));
+    snd_sel = clamp(snd_sel, 0, max(0, array_length(proj.sfx) - 1));
+    logic_sel = clamp(logic_sel, -1, array_length(proj.rules) - 1);
     build_listing = [];
+    live_mark_stale();
 }
 
 /// Call BEFORE changing proj. Coalesces rapid edits with the same tag.
 function undo_mark(_tag)
 {
     proj_dirty = true;
+    live_mark_stale();
     if (_tag == undo_last_tag && current_time - undo_last_time < 1200)
     {
         undo_last_time = current_time;
@@ -496,19 +526,31 @@ function sprite_encode(_s)
     return _out;
 }
 
-/// Removes an actor and repairs rule references
+/// One actor reference after actor _idx is removed (a reference to it becomes 0)
+function actor_ref_fix(_v, _idx)
+{
+    if (_v == _idx) { return 0; }
+    if (_v > _idx) { return _v - 1; }
+    return _v;
+}
+
+/// Removes an actor and repairs rule references (AND DO lines too)
 function actor_remove(_idx)
 {
     array_delete(proj.actors, _idx, 1);
     for (var i = 0; i < array_length(proj.rules); i++)
     {
         var _r = proj.rules[i];
-        if (_r.a == _idx) { _r.a = 0; }
-        else { if (_r.a > _idx) { _r.a -= 1; } }
-        if (_r.b == _idx) { _r.b = 0; }
-        else { if (_r.b > _idx) { _r.b -= 1; } }
-        if (_r.target == _idx) { _r.target = 0; }
-        else { if (_r.target > _idx) { _r.target -= 1; } }
+        _r.a = actor_ref_fix(_r.a, _idx);
+        _r.b = actor_ref_fix(_r.b, _idx);
+        _r.target = actor_ref_fix(_r.target, _idx);
+        if (_r.act == 15) { _r.value = actor_ref_fix(_r.value, _idx); }
+        for (var m = 0; m < array_length(_r.more); m++)
+        {
+            var _d = _r.more[m];
+            _d.target = actor_ref_fix(_d.target, _idx);
+            if (_d.act == 15) { _d.value = actor_ref_fix(_d.value, _idx); }
+        }
     }
 }
 
@@ -522,6 +564,9 @@ function settings_load()
     auto_tutorials = ini_read_real("ui", "auto_tutorials", 1) == 1;
     ui_scale_pref = ini_read_real("ui", "scale", 0);
     start_fullscreen = ini_read_real("ui", "fullscreen", 1) == 1;
+    logic_code_on = ini_read_real("ui", "logic_code", 1) == 1;
+    u64_ip = ini_read_string("ultimate", "ip", "");
+    u64_password = ini_read_string("ultimate", "password", "");
     for (var i = 0; i < WS_COUNT; i++)
     {
         ws_seen[i] = ini_read_real("seen", "ws" + string(i), 0) == 1;
@@ -545,6 +590,11 @@ function settings_save()
     var _fs = 0;
     if (start_fullscreen) { _fs = 1; }
     ini_write_real("ui", "fullscreen", _fs);
+    var _lc = 0;
+    if (logic_code_on) { _lc = 1; }
+    ini_write_real("ui", "logic_code", _lc);
+    ini_write_string("ultimate", "ip", u64_ip);
+    ini_write_string("ultimate", "password", u64_password);
     for (var i = 0; i < WS_COUNT; i++)
     {
         var _s = 0;

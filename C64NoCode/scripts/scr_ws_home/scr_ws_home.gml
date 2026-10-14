@@ -67,11 +67,11 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
     ui_panel(_x1, _cy, _split - 10, _y2, "How it works");
     var _titles = ["Paint the screen", "Draw sprites", "Place actors", "Write the rules", "Make sounds", "Build and play"];
     var _desc = ["Backgrounds, titles and walls made from C64 characters.",
-                 "Up to 8 pixel pictures, hi-res or multicolour.",
+                 "Up to 32 sprite pictures, hi-res or multicolour.",
                  "Pick the player, enemies and pickups and how they move.",
                  "WHEN the player touches a gem, DO add 10 to the score.",
-                 "Coins, lasers and explosions from the SID chip.",
-                 "Get a real .PRG file and run it in VICE."];
+                 "Coins, lasers and explosions from the SID chip - filters, arpeggios and all.",
+                 "Get a real .PRG file and run it in VICE or on a C64 Ultimate."];
     var _cw = floor((_split - 10 - _x1 - 48) / 3);
     var _ch = floor((_y2 - _cy - 74) / 2);
     for (var i = 0; i < 6; i++)

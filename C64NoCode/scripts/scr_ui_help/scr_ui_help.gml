@@ -98,10 +98,22 @@ function ui_status_bar(_gw, _gh)
         _msg = ui_help_title;
         if (ui_help_body != "") { _msg += "  -  " + ui_help_body; }
     }
-    ui_text(16, _y + 17, ui_text_fit(_msg, global.f_small, _gw - 360), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
     var _dirty = "Saved";
     if (proj_dirty) { _dirty = "Unsaved changes"; }
-    ui_text(_gw - 16, _y + 17, proj.name + "   |   " + _dirty, global.TH.text_faint, fa_right, fa_middle, global.f_small, 1);
+    // a long game name (up to 32 letters) is cut so it cannot push the help text away
+    var _right = ui_text_fit(proj.name, global.f_small, 180) + "  |  " + machine_cur().short_name + "  |  " + _dirty;
+    draw_set_font(global.f_small);
+    var _rw = ui_sw(_right);
+    // memory bar, just left of the project name (shorter in a narrow window)
+    var _mw = 200;
+    if (_gw < 1600) { _mw = 140; }
+    var _mx = _gw - 16 - _rw - 28 - _mw;
+    mem_bar_draw(_mx, _y + 11, _mw, 12);
+    // mem_bar_draw puts its "Memory ... KB (..%)" label 10 px left of the bar: keep clear of the widest one
+    var _mlw = ui_sw("Memory  00 / 00 KB  (100%)") + 10;
+    var _help_w = max(120, _mx - _mlw - 16 - 20);
+    ui_text(16, _y + 17, ui_text_fit(_msg, global.f_small, _help_w), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
+    ui_text(_gw - 16, _y + 17, _right, global.TH.text_faint, fa_right, fa_middle, global.f_small, 1);
 }
 
 function toast(_text, _kind)

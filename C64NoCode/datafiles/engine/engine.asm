@@ -108,8 +108,7 @@ start:
     sta $d40f
     lda #$80
     sta $d412
-    lda #$8f
-    sta $d418
+    jsr sfx_init
     lda #0
     sta irq_stage
     sta frame_flag
@@ -3554,51 +3553,8 @@ add_score:
     rts
 
 ; ---------------------------------------------------------------------
-; sound: A = sfx index (255 none)
-play_sfx:
-    cmp #8
-    bcs ps_r
-    tax
-    lda #0
-    sta $d404
-    lda sfxt_ad,x
-    sta $d405
-    lda sfxt_sr,x
-    sta $d406
-    lda #0
-    sta $d400
-    lda #8
-    sta $d403
-    lda sfxt_f,x
-    sta sfx_fh
-    sta $d401
-    lda sfxt_sw,x
-    sta sfx_sw
-    lda sfxt_len,x
-    sta sfx_t
-    lda sfxt_w,x
-    sta sfx_w
-    ora #1
-    sta $d404
-    ldx #0
-ps_r:
-    rts
-
-sfx_update:
-    lda sfx_t
-    beq sfu_r
-    lda sfx_fh
-    clc
-    adc sfx_sw
-    sta sfx_fh
-    sta $d401
-    dec sfx_t
-    bne sfu_r
-    lda sfx_w
-    and #$fe
-    sta $d404
-sfu_r:
-    rts
+; sound: play_sfx (A = sound, 255 none), sfx_update, sfx_stop and sfx_init are
+; generated with the sound tables by sid_emit (scr_sid) - one player for both kinds of game.
 
 ; ---------------------------------------------------------------------
 dir_dx: .byte 0,1,1,1,0,255,255,255,0
@@ -3667,10 +3623,6 @@ cave_row:  .fill 1,0
 cp_n:      .fill 1,0
 cp_t:      .fill 1,0
 cp_y:      .fill 1,0
-sfx_t:     .fill 1,0
-sfx_fh:    .fill 1,0
-sfx_sw:    .fill 1,0
-sfx_w:     .fill 1,0
 sh_msb:    .fill 1,0
 sh_en:     .fill 1,0
 sh_mc:     .fill 1,0

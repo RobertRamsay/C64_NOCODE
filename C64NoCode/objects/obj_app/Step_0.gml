@@ -48,6 +48,9 @@ if (autosave_timer > 30)
 
 shortcuts_step();
 
+// code previewer + memory bar: build again a moment after a change, never mid-stroke
+live_step();
+
 var _cap = "C64 No-Code Studio - " + proj.name;
 if (proj_dirty) { _cap += " *"; }
 if (_cap != caption_last)

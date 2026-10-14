@@ -248,7 +248,7 @@ function engine_codegen(_p)
     engine_gen_shifts(L, _wtop, _wrows, _e.fullcol);
 
     // ---------------- data ----------------
-    array_push(L, "; ---------------- data ----------------");
+    array_push(L, "; ---------------- data ----------------", "level_data:");
     // tiles (64)
     var _nt = min(64, array_length(_p.tiles));
     var _tabs = ["tc0", "tc1", "tc2", "tc3", "tcol", "tattr", "tscore"];
@@ -425,23 +425,8 @@ function engine_codegen(_p)
     array_push(L, "txt_over:", " .byte " + cg_text_bytes(_p.over_text));
     array_push(L, "txt_win:", " .byte " + cg_text_bytes(_p.win_text));
 
-    // sfx
-    var _ad = "", _sr = "", _fq = "", _sw = "", _len = "", _wv = "";
-    var _waves = [16, 32, 64, 128];
-    for (var sfi = 0; sfi < 8; sfi++)
-    {
-        var _sf = _p.sfx[sfi];
-        var _sp = ",";
-        if (sfi == 0) { _sp = ""; }
-        _ad += _sp + string((clamp(_sf.atk, 0, 15) << 4) | clamp(_sf.dec, 0, 15));
-        _sr += _sp + string((clamp(_sf.sus, 0, 15) << 4) | clamp(_sf.rel, 0, 15));
-        _fq += _sp + string(clamp(_sf.pitch, 1, 255));
-        _sw += _sp + string(clamp(_sf.sweep, -8, 8) & 255);
-        _len += _sp + string(clamp(_sf.len, 1, 200));
-        _wv += _sp + string(_waves[clamp(_sf.wave, 0, 3)]);
-    }
-    array_push(L, "sfxt_ad:", " .byte " + _ad, "sfxt_sr:", " .byte " + _sr, "sfxt_f:", " .byte " + _fq);
-    array_push(L, "sfxt_sw:", " .byte " + _sw, "sfxt_len:", " .byte " + _len, "sfxt_w:", " .byte " + _wv);
+    // SID sound player + tables (shared with single screen games, scr_sid)
+    sid_emit(L, _p);
 
     // sprite and charset blobs (copied to $E000 / $F000 at start)
     array_push(L, "spr_src:");

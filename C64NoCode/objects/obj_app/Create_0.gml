@@ -164,9 +164,57 @@ act_drag_dy = 0;
 
 // sound
 snd_sel = 0;
+snd_ungrouped_open = true;
+snd_drag = -1;
+snd_drag_y0 = 0;
+snd_dragging = false;
 preview_sound = -1;
 preview_buffer = -1;
 preview_inst = -1;
+preview_start = 0;
+preview_len_ms = 0;
+preview_key = "";
+preview_scope = [];
+
+// logic + code previewer
+logic_sel = -1;
+logic_reveal = -1;
+logic_resort = false;
+logic_code_on = true;
+codeview_sel_only = false;
+codeview_follow = false;
+
+// live build (code previewer + memory bar): the game made again a moment after each change
+live_stale = true;
+live_stale_time = 0;
+live_proj_ref = undefined;
+live_machine = -1;
+live_type = -1;
+live_ok = false;
+live_err = "";
+live_lines = [];
+live_marks = [];
+live_rule_bytes = [];
+live_end = 2049;
+live_size = 0;
+live_limit = 40960;
+live_spr_end = 0;
+live_seg_code = 0;
+live_seg_sound = 0;
+live_seg_gap = 0;
+live_seg_sprites = 0;
+live_seg_data = 0;
+
+// C64 Ultimate on the network
+u64_ip = "";
+u64_password = "";
+u64_busy = false;
+u64_req = -1;
+u64_what = "";
+u64_buffer = -1;
+u64_started = 0;
+u64_status = "";
+u64_status_kind = 0;
 
 // build
 build_log = [];
