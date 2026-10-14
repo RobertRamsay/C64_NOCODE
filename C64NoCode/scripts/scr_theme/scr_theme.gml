@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - theme, palette and fonts
+/// C64 ENGINE - theme, palette and fonts
 
 function theme_init()
 {

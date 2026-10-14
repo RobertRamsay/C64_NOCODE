@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Actors workspace (cast + stage)
+/// C64 ENGINE - Actors workspace (cast + stage)
 
 function actor_names()
 {

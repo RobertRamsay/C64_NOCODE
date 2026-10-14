@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - map game editors: templates, world, charset, tiles, map, enemies
+/// C64 ENGINE - map game editors: templates, world, charset, tiles, map, enemies
 
 #macro WS_TEMPLATES 7
 #macro WS_WORLD 8

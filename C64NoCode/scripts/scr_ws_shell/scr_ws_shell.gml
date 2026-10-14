@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - top bar, workspace switching, shortcuts
+/// C64 ENGINE - top bar, workspace switching, shortcuts
 
 #macro WS_HOME 0
 #macro WS_SCREEN 1
@@ -40,7 +40,12 @@ function ui_c64_text(_x, _y, _str, _scale, _col)
     return string_length(_str) * 8 * _scale;
 }
 
-/// Logo capsule: "64  C64 NO-CODE" in the C64 font + rainbow stripes. Returns its width.
+// the product's name (the project file, settings and save folder keep their old names, so
+// existing projects and settings carry on working)
+#macro APP_NAME "C64 Engine"
+#macro APP_LOGO "C64 ENGINE"
+
+/// Logo capsule: "64  C64 ENGINE" in the C64 font + rainbow stripes. Returns its width.
 function draw_logo(_x, _y, _compact)
 {
     var _h = 34;
@@ -48,7 +53,7 @@ function draw_logo(_x, _y, _compact)
     var _r = _h * 0.5;
     var _ty = _y + (_h - 8 * _sc) * 0.5;
     var _badge_w = 2 * 8 * _sc;
-    var _title_w = 11 * 8 * _sc;
+    var _title_w = string_length(APP_LOGO) * 8 * _sc;
     if (_compact) { _title_w = -14; }          // narrow window: just the 64 badge and the stripes
     var _stripe_x = _x + 14 + _badge_w + 14 + _title_w + 12;
     var _w = (_stripe_x - _x) + 34 + 6;
@@ -57,7 +62,7 @@ function draw_logo(_x, _y, _compact)
     ui_rrect(_x + 2, _y + 1, _x + _w - 2, _y + _h * 0.45, _r - 1, c_white, c_white, 0.06);
     ui_rrect_line(_x, _y, _x + _w, _y + _h, _r, global.TH.panel_edge, 0.8, 1);
     ui_c64_text(_x + 14, _ty, "64", _sc, c_white);
-    if (!_compact) { ui_c64_text(_x + 14 + _badge_w + 14, _ty, "C64 NO-CODE", _sc, global.TH.text); }
+    if (!_compact) { ui_c64_text(_x + 14 + _badge_w + 14, _ty, APP_LOGO, _sc, global.TH.text); }
     // breadbin rainbow stripes at the right end
     var _stripes = [make_colour_rgb(222, 72, 72), make_colour_rgb(240, 150, 60), make_colour_rgb(240, 210, 80), make_colour_rgb(90, 190, 110), make_colour_rgb(80, 140, 230)];
     var _st = _y + 8;

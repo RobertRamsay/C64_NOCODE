@@ -1,0 +1,580 @@
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index a6847ea..3d03db7 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -1,5 +1,5 @@
+ ; =====================================================================
+-;  C64 NO-CODE STUDIO - MAP GAME ENGINE  (stock C64, PAL)
++;  C64 ENGINE - MAP GAME ENGINE  (stock C64, PAL)
+ ;  Scrolling: none / horizontal / vertical / 8-way follow / flip-screen
+ ;  Kinds: shoot-em-up, platformer, cave digger, top-down
+ ;  $01=$35 (BASIC+KERNAL out), own IRQ at $FFFE, VIC bank 3:
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index bc6c483..c0c831c 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - app controller
++/// C64 ENGINE - app controller
+ 
+ // ---------- display ----------
+ var _aa = 0;
+diff --git a/C64NoCode/objects/obj_app/Step_0.gml b/C64NoCode/objects/obj_app/Step_0.gml
+index aff1c92..062e2bf 100644
+--- a/C64NoCode/objects/obj_app/Step_0.gml
++++ b/C64NoCode/objects/obj_app/Step_0.gml
+@@ -54,7 +54,7 @@ live_step();
+ // music preview: keep its audio queue fed
+ music_preview_step();
+ 
+-var _cap = "C64 No-Code Studio - " + proj.name;
++var _cap = APP_NAME + " - " + proj.name;
+ if (proj_dirty) { _cap += " *"; }
+ if (_cap != caption_last)
+ {
+diff --git a/C64NoCode/options/mac/options_mac.yy b/C64NoCode/options/mac/options_mac.yy
+index 5832ac5..7866248 100644
+--- a/C64NoCode/options/mac/options_mac.yy
++++ b/C64NoCode/options/mac/options_mac.yy
+@@ -14,7 +14,7 @@
+   "option_mac_copyright":"",
+   "option_mac_disable_sandbox":false,
+   "option_mac_display_cursor":true,
+-  "option_mac_display_name":"C64 No-Code Studio",
++  "option_mac_display_name":"C64 Engine",
+   "option_mac_enable_retina":false,
+   "option_mac_enable_steam":false,
+   "option_mac_icon_png":"${base_options_dir}/mac/icons/1024.png",
+diff --git a/C64NoCode/options/windows/options_windows.yy b/C64NoCode/options/windows/options_windows.yy
+index b7659df..99b5d26 100644
+--- a/C64NoCode/options/windows/options_windows.yy
++++ b/C64NoCode/options/windows/options_windows.yy
+@@ -11,16 +11,16 @@
+   "option_windows_description_info":"Make C64 games without code",
+   "option_windows_disable_sandbox":true,
+   "option_windows_display_cursor":true,
+-  "option_windows_display_name":"C64 No-Code Studio",
++  "option_windows_display_name":"C64 Engine",
+   "option_windows_enable_steam":false,
+-  "option_windows_executable_name":"C64NoCodeStudio.exe",
++  "option_windows_executable_name":"C64Engine.exe",
+   "option_windows_icon":"${options_dir}/windows/icons/icon.ico",
+   "option_windows_installer_finished":"${options_dir}/windows/installer/finished.bmp",
+   "option_windows_installer_header":"${options_dir}/windows/installer/header.bmp",
+   "option_windows_interpolate_pixels":true,
+   "option_windows_license":"${base_options_dir}/windows/installer/license.txt",
+   "option_windows_nsis_file":"${base_options_dir}/windows/installer/nsis_script.nsi",
+-  "option_windows_product_info":"C64NoCodeStudio",
++  "option_windows_product_info":"C64Engine",
+   "option_windows_resize_window":true,
+   "option_windows_save_location":0,
+   "option_windows_scale":1,
+diff --git a/C64NoCode/scripts/scr_anim/scr_anim.gml b/C64NoCode/scripts/scr_anim/scr_anim.gml
+index 8b40564..b818981 100644
+--- a/C64NoCode/scripts/scr_anim/scr_anim.gml
++++ b/C64NoCode/scripts/scr_anim/scr_anim.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - animations (the Animate page), ported from ADAM.
++/// C64 ENGINE - animations (the Animate page), ported from ADAM.
+ /// Each member of the cast - the actors of a single-screen game; the player, its shot, the
+ /// enemies' shot and the enemy types of a map game - can have ADAM's animations: Idle, Walk,
+ /// Jump, Fall, the 8 joystick directions (N NE E SE S SW W NW), Fire and Fire + the 8
+diff --git a/C64NoCode/scripts/scr_asm6502/scr_asm6502.gml b/C64NoCode/scripts/scr_asm6502/scr_asm6502.gml
+index 3f64d9e..aab9edb 100644
+--- a/C64NoCode/scripts/scr_asm6502/scr_asm6502.gml
++++ b/C64NoCode/scripts/scr_asm6502/scr_asm6502.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - compact two-pass 6502 assembler
++/// C64 ENGINE - compact two-pass 6502 assembler
+ /// Modes: 0 IMP, 1 ACC, 2 IMM, 3 ZP, 4 ZPX, 5 ZPY, 6 ABS, 7 ABX, 8 ABY, 9 IND, 10 IZX, 11 IZY, 12 REL
+ /// Directives: * = addr, name = expr, .byte, .fill n,v, .align n, .padto addr
+ /// Expressions: + - * / and < > prefixes, $hex, %bin, decimal, labels.
+diff --git a/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml b/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
+index a0122d1..eb0045c 100644
+--- a/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
++++ b/C64NoCode/scripts/scr_bitmap/scr_bitmap.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - bitmaps: full-screen 320 x 200 pictures (the Bitmaps page), ported from
++/// C64 ENGINE - bitmaps: full-screen 320 x 200 pictures (the Bitmaps page), ported from
+ /// the C64 Dev Machine's bitmap editor and laid out like ADAM's Backdrop page.
+ ///
+ /// A bitmap is multicolour (160 x 200, pixels twice as wide) or hi-res (320 x 200). Every pixel
+diff --git a/C64NoCode/scripts/scr_codegen/scr_codegen.gml b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+index 8d43526..d23b735 100644
+--- a/C64NoCode/scripts/scr_codegen/scr_codegen.gml
++++ b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - turns the no-code project into 6502 assembly
++/// C64 ENGINE - turns the no-code project into 6502 assembly
+ /// Memory: BASIC stub $0801, code, vars, sprites aligned at >= $2000, screen + colour data after.
+ 
+ #macro CG_XMIN 24
+@@ -179,7 +179,7 @@ function codegen_project(_p)
+     var _varlen = 0;
+     for (var vl = 0; vl < array_length(_sizes); vl++) { _varlen += _sizes[vl]; }
+ 
+-    array_push(L, "; Generated by C64 No-Code Studio - " + _p.name);
++    array_push(L, "; Generated by " + APP_NAME + " - " + _p.name);
+     array_push(L, "; Target: " + machine_cur().name + " - " + string(sid_fps()) + " frames a second");
+     array_push(L, "* = $0801");
+     array_push(L, " .byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00");
+diff --git a/C64NoCode/scripts/scr_codeview/scr_codeview.gml b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+index f6aa3e7..856a7c0 100644
+--- a/C64NoCode/scripts/scr_codeview/scr_codeview.gml
++++ b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - live build: the game is generated and assembled again a moment after
++/// C64 ENGINE - live build: the game is generated and assembled again a moment after
+ /// each change (never mid-stroke). It feeds the code previewer on the Logic page and the
+ /// memory bar in the status bar.
+ 
+diff --git a/C64NoCode/scripts/scr_d64/scr_d64.gml b/C64NoCode/scripts/scr_d64/scr_d64.gml
+index 67b5986..546439d 100644
+--- a/C64NoCode/scripts/scr_d64/scr_d64.gml
++++ b/C64NoCode/scripts/scr_d64/scr_d64.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - .d64 disk images (a 1541 floppy: 35 tracks, 683 sectors of 256 bytes),
++/// C64 ENGINE - .d64 disk images (a 1541 floppy: 35 tracks, 683 sectors of 256 bytes),
+ /// for games with a loading screen: the loader first (so LOAD"*",8,1 and VICE's autostart run
+ /// it), then the game, which the loader loads by name while it shows the bitmap.
+ 
+diff --git a/C64NoCode/scripts/scr_digi/scr_digi.gml b/C64NoCode/scripts/scr_digi/scr_digi.gml
+index 8e28e0a..58083a5 100644
+--- a/C64NoCode/scripts/scr_digi/scr_digi.gml
++++ b/C64NoCode/scripts/scr_digi/scr_digi.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - sampled sounds ("digis"), ported from ADAM's Sound page sample import.
++/// C64 ENGINE - sampled sounds ("digis"), ported from ADAM's Sound page sample import.
+ /// A WAV is kept as an 8-bit mono source (up to 22 kHz, 5 seconds). The C64 plays it the classic
+ /// way: a CIA 2 timer fires an NMI a few thousand times a second and each NMI writes the next
+ /// 4-bit sample to the SID's master volume ($D418, low nibble). Two samples are packed in a byte.
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index dbc46c1..57e074a 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - map game engine: data model + code generator
++/// C64 ENGINE - map game engine: data model + code generator
+ /// The 6502 engine lives in datafiles/engine/engine.asm; this script adds the
+ /// configuration, generated shift routines and all the game data.
+ 
+@@ -221,7 +221,7 @@ function engine_codegen(_p)
+     var _hw = hud_warnings(_p);
+     for (var hw = 0; hw < array_length(_hw); hw++) { array_push(_warn, _hw[hw]); }
+ 
+-    array_push(L, "; ===== " + _p.name + " - generated by C64 No-Code Studio =====");
++    array_push(L, "; ===== " + _p.name + " - generated by " + APP_NAME + " =====");
+     array_push(L, "* = $0801");
+     array_push(L, " .byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00");
+     var _cfg = [
+diff --git a/C64NoCode/scripts/scr_gfx/scr_gfx.gml b/C64NoCode/scripts/scr_gfx/scr_gfx.gml
+index 1099c35..97b829c 100644
+--- a/C64NoCode/scripts/scr_gfx/scr_gfx.gml
++++ b/C64NoCode/scripts/scr_gfx/scr_gfx.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - chargen glyphs, C64 screen preview, sprite caches
++/// C64 ENGINE - chargen glyphs, C64 screen preview, sprite caches
+ 
+ function chargen_init()
+ {
+diff --git a/C64NoCode/scripts/scr_hud/scr_hud.gml b/C64NoCode/scripts/scr_hud/scr_hud.gml
+index afe86aa..b78dfc6 100644
+--- a/C64NoCode/scripts/scr_hud/scr_hud.gml
++++ b/C64NoCode/scripts/scr_hud/scr_hud.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - the custom HUD (UI page, ported from ADAM's UI page): a panel strip at
++/// C64 ENGINE - the custom HUD (UI page, ported from ADAM's UI page): a panel strip at
+ /// the top or bottom of the screen (1 to 6 text rows), drawn with a 9-slice frame of 9 characters
+ /// (corners, edges and a fill), a font style (or a font drawn on the page) and the fields: text,
+ /// score, lives, the level goal and the level, each with its own place and colour.
+diff --git a/C64NoCode/scripts/scr_machine/scr_machine.gml b/C64NoCode/scripts/scr_machine/scr_machine.gml
+index 4c57cac..8a880b5 100644
+--- a/C64NoCode/scripts/scr_machine/scr_machine.gml
++++ b/C64NoCode/scripts/scr_machine/scr_machine.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - target machine profiles (picked in the top bar, saved in the project)
++/// C64 ENGINE - target machine profiles (picked in the top bar, saved in the project)
+ /// PAL and NTSC change the frame rate (timers, sound speed) and the SID clock.
+ /// The C64 Ultimate is a PAL C64 that Build and play sends the game to over the network.
+ 
+diff --git a/C64NoCode/scripts/scr_mod/scr_mod.gml b/C64NoCode/scripts/scr_mod/scr_mod.gml
+index b438ac1..943e70b 100644
+--- a/C64NoCode/scripts/scr_mod/scr_mod.gml
++++ b/C64NoCode/scripts/scr_mod/scr_mod.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - ProTracker .MOD import and save (Music page), ported from ADAM's scr_mod.
++/// C64 ENGINE - ProTracker .MOD import and save (Music page), ported from ADAM's scr_mod.
+ /// The file side (mod_write / mod_parse / mod_read / mod_save_file, the neutral "modsong" struct
+ /// { title, samples[31], order[], restart, patterns[][64][4] { note, sample, effect, param } })
+ /// is ADAM's, unchanged. What is new is the C64 side:
+diff --git a/C64NoCode/scripts/scr_music/scr_music.gml b/C64NoCode/scripts/scr_music/scr_music.gml
+index 2870a8b..d0afc6e 100644
+--- a/C64NoCode/scripts/scr_music/scr_music.gml
++++ b/C64NoCode/scripts/scr_music/scr_music.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - music: loop library, SID instruments, songs, the song compiler,
++/// C64 ENGINE - music: loop library, SID instruments, songs, the song compiler,
+ /// the 6502 music driver and the preview player (it runs the driver's logic frame by frame).
+ ///
+ /// Arrangement (song.arr), as ADAM's Music page but for the SID's 3 voices:
+diff --git a/C64NoCode/scripts/scr_patch/scr_patch.gml b/C64NoCode/scripts/scr_patch/scr_patch.gml
+index 8e3a7b0..523ba63 100644
+--- a/C64NoCode/scripts/scr_patch/scr_patch.gml
++++ b/C64NoCode/scripts/scr_patch/scr_patch.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Patch sounds (Sound page, kind 2), ported from ADAM's Patch synth.
++/// C64 ENGINE - Patch sounds (Sound page, kind 2), ported from ADAM's Patch synth.
+ /// ADAM renders its patch into a Paula sample. The SID already is the synth ADAM imitates -
+ /// three oscillators, hard sync, ring modulation, a resonant multimode filter - so here a patch
+ /// plays on the real chip: the studio works out what to write to every SID register on every
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index 82b61fd..67353c9 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - project data model, presets, save/load, undo
++/// C64 ENGINE - project data model, presets, save/load, undo
+ 
+ #macro SPR_COUNT 32
+ 
+diff --git a/C64NoCode/scripts/scr_sfx_preview/scr_sfx_preview.gml b/C64NoCode/scripts/scr_sfx_preview/scr_sfx_preview.gml
+index e2963aa..7a90953 100644
+--- a/C64NoCode/scripts/scr_sfx_preview/scr_sfx_preview.gml
++++ b/C64NoCode/scripts/scr_sfx_preview/scr_sfx_preview.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - SID sound preview inside the editor (rendered by sfx_render in scr_sid)
++/// C64 ENGINE - SID sound preview inside the editor (rendered by sfx_render in scr_sid)
+ 
+ function sfx_preview_stop()
+ {
+diff --git a/C64NoCode/scripts/scr_sid/scr_sid.gml b/C64NoCode/scripts/scr_sid/scr_sid.gml
+index a52cbc2..1bf3551 100644
+--- a/C64NoCode/scripts/scr_sid/scr_sid.gml
++++ b/C64NoCode/scripts/scr_sid/scr_sid.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - SID sound effects: data model, presets, preview synth and the 6502 player
++/// C64 ENGINE - SID sound effects: data model, presets, preview synth and the 6502 player
+ /// One player is used by both kinds of game (single screen codegen and the map engine).
+ /// Sounds play on SID voice 1 or 2, borrowing it from the music while they play; voice 3 is the
+ /// music's alone (scr_music). The player runs once a frame (50 Hz PAL, 60 Hz NTSC).
+diff --git a/C64NoCode/scripts/scr_templates/scr_templates.gml b/C64NoCode/scripts/scr_templates/scr_templates.gml
+index cea6afa..8a93872 100644
+--- a/C64NoCode/scripts/scr_templates/scr_templates.gml
++++ b/C64NoCode/scripts/scr_templates/scr_templates.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - game templates (all built from code, no external files)
++/// C64 ENGINE - game templates (all built from code, no external files)
+ 
+ function templates_init()
+ {
+diff --git a/C64NoCode/scripts/scr_theme/scr_theme.gml b/C64NoCode/scripts/scr_theme/scr_theme.gml
+index 7bc7e9d..ab50a8b 100644
+--- a/C64NoCode/scripts/scr_theme/scr_theme.gml
++++ b/C64NoCode/scripts/scr_theme/scr_theme.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - theme, palette and fonts
++/// C64 ENGINE - theme, palette and fonts
+ 
+ function theme_init()
+ {
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index c6d2893..ca592e9 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - tutorials: a full guided tour plus a mini tour per page
++/// C64 ENGINE - tutorials: a full guided tour plus a mini tour per page
+ 
+ function tut_step(_tab, _target, _title, _body)
+ {
+@@ -9,7 +9,7 @@ function tut_init()
+ {
+     tut_steps = [
+         // ---------- HOME ----------
+-        tut_step(WS_HOME, "", "Welcome to C64 No-Code Studio", "You are going to make a real Commodore 64 game without writing a single line of code. This tour visits every page. Use Next and Back, or the arrow keys. Press Esc to leave at any time."),
++        tut_step(WS_HOME, "", "Welcome to " + APP_NAME, "You are going to make a real Commodore 64 game without writing a single line of code. This tour visits every page. Use Next and Back, or the arrow keys. Press Esc to leave at any time."),
+         tut_step(WS_HOME, "home_example", "Try the example first", "This loads 'Gem Hunter', a finished little game. It is a great way to see how everything fits together. Go ahead and click it if you like - you can Undo or start a New project any time."),
+         tut_step(WS_HOME, "home_card_0", "Six simple steps", "Every game is made the same way: paint a screen, draw sprites, place actors, write rules, add sounds, then build. Click any card to jump to that page."),
+         tut_step(WS_HOME, "home_name", "Name your game", "Give your game a name. It is also used for the file names when you save and build."),
+diff --git a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+index 66284dd..c236d63 100644
+--- a/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
++++ b/C64NoCode/scripts/scr_ui_draw/scr_ui_draw.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - rounded, gradient drawing primitives
++/// C64 ENGINE - rounded, gradient drawing primitives
+ 
+ function ui_rr_points(_x1, _y1, _x2, _y2, _r)
+ {
+diff --git a/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml b/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
+index 97fa40c..54489e6 100644
+--- a/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
++++ b/C64NoCode/scripts/scr_ui_help/scr_ui_help.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - hover helper lines, help bubbles, status bar, toasts
++/// C64 ENGINE - hover helper lines, help bubbles, status bar, toasts
+ 
+ function ui_help_draw(_gw, _gh)
+ {
+diff --git a/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml b/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
+index 7482949..d48d608 100644
+--- a/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
++++ b/C64NoCode/scripts/scr_ui_widgets/scr_ui_widgets.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - immediate-mode widgets (run in obj_app scope)
++/// C64 ENGINE - immediate-mode widgets (run in obj_app scope)
+ /// Help strings use "Title|Longer explanation" format.
+ 
+ #macro BTN_NORMAL 0
+diff --git a/C64NoCode/scripts/scr_ultimate/scr_ultimate.gml b/C64NoCode/scripts/scr_ultimate/scr_ultimate.gml
+index 19e4ab7..db1e22c 100644
+--- a/C64NoCode/scripts/scr_ultimate/scr_ultimate.gml
++++ b/C64NoCode/scripts/scr_ultimate/scr_ultimate.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - C64 Ultimate (and Ultimate 64 / 1541 Ultimate II+) over the network.
++/// C64 ENGINE - C64 Ultimate (and Ultimate 64 / 1541 Ultimate II+) over the network.
+ /// Uses the Ultimate's REST API: GET /v1/version to test the address, POST /v1/runners:run_prg
+ /// with the .PRG as the body to load and run it, PUT /v1/machine:reset to reset the C64.
+ /// Turn on "Web Remote Control Service" in the Ultimate's network settings first.
+diff --git a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+index 21437d7..6089a22 100644
+--- a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
++++ b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Actors workspace (cast + stage)
++/// C64 ENGINE - Actors workspace (cast + stage)
+ 
+ function actor_names()
+ {
+diff --git a/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml
+index 7b907eb..846be63 100644
+--- a/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml
++++ b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Animate page (ADAM's): Idle, Walk, Jump and Fall animations of up to
++/// C64 ENGINE - Animate page (ADAM's): Idle, Walk, Jump and Fall animations of up to
+ /// 16 frames for each cast member, or the 8 joystick directions, and Fire animations for the
+ /// player - with a test mode driven by the arrow keys, WASD or a gamepad.
+ /// Data, plans and the 6502 player are in scr_anim.
+diff --git a/C64NoCode/scripts/scr_ws_bitmap/scr_ws_bitmap.gml b/C64NoCode/scripts/scr_ws_bitmap/scr_ws_bitmap.gml
+index 63c764f..21a5f11 100644
+--- a/C64NoCode/scripts/scr_ws_bitmap/scr_ws_bitmap.gml
++++ b/C64NoCode/scripts/scr_ws_bitmap/scr_ws_bitmap.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - the Bitmaps page: paint full-screen C64 bitmaps (multicolour or hi-res),
++/// C64 ENGINE - the Bitmaps page: paint full-screen C64 bitmaps (multicolour or hi-res),
+ /// import PNG / JPG / Koala / Art Studio pictures, and choose where they show: the title screen,
+ /// the loading screen, game over, you win, before a level (map games) or from a rule (Logic page).
+ /// Tools as the C64 Dev Machine's bitmap editor, laid out like ADAM's Backdrop page.
+diff --git a/C64NoCode/scripts/scr_ws_build/scr_ws_build.gml b/C64NoCode/scripts/scr_ws_build/scr_ws_build.gml
+index ce52770..759019f 100644
+--- a/C64NoCode/scripts/scr_ws_build/scr_ws_build.gml
++++ b/C64NoCode/scripts/scr_ws_build/scr_ws_build.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Build workspace
++/// C64 ENGINE - Build workspace
+ 
+ function build_log_add(_text, _kind)
+ {
+diff --git a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+index 7638e53..e88af55 100644
+--- a/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
++++ b/C64NoCode/scripts/scr_ws_engine/scr_ws_engine.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - map game editors: templates, world, charset, tiles, map, enemies
++/// C64 ENGINE - map game editors: templates, world, charset, tiles, map, enemies
+ 
+ #macro WS_TEMPLATES 7
+ #macro WS_WORLD 8
+diff --git a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+index 37fab56..6339f02 100644
+--- a/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
++++ b/C64NoCode/scripts/scr_ws_home/scr_ws_home.gml
+@@ -1,11 +1,11 @@
+-/// C64 NO-CODE STUDIO - Home workspace
++/// C64 ENGINE - Home workspace
+ 
+ function home_save(_save_as)
+ {
+     var _path = proj_path;
+     if (_save_as || _path == "")
+     {
+-        _path = get_save_filename("C64 No-Code project|*.c64nc", proj.name + ".c64nc");
++        _path = get_save_filename(APP_NAME + " project|*.c64nc", proj.name + ".c64nc");
+         if (_path == "") { return; }
+         if (filename_ext(_path) == "") { _path += ".c64nc"; }
+     }
+@@ -18,7 +18,7 @@ function home_open()
+     {
+         if (!show_question("You have unsaved changes. Open another project anyway?")) { return; }
+     }
+-    var _path = get_open_filename("C64 No-Code project|*.c64nc", "");
++    var _path = get_open_filename(APP_NAME + " project|*.c64nc", "");
+     if (_path != "") { project_load_from(_path); }
+ }
+ 
+@@ -44,23 +44,28 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
+     var _split = _x1 + floor((_x2 - _x1) * 0.6);
+     // ---------- hero ----------
+     ui_panel(_x1, _y1, _split - 10, _y1 + 250, "");
++    // the product's mark, top right of the hero (the top bar drops its name when the tabs need the room)
++    var _bw = string_length(APP_LOGO) * 8 * 2;
++    if (_split - 10 - 28 - _bw > _x1 + 560) { ui_c64_text(_split - 10 - 28 - _bw, _y1 + 30, APP_LOGO, 2, global.TH.accent2); }
+     ui_text(_x1 + 28, _y1 + 26, "Make a Commodore 64 game.", c_white, fa_left, fa_top, global.f_hero, 1);
+     ui_text(_x1 + 28, _y1 + 62, "No code needed.", global.TH.accent, fa_left, fa_top, global.f_hero, 1);
+     ui_text_wrap(_x1 + 28, _y1 + 106, "Paint a screen, draw sprites, choose how things move and write the rules as simple WHEN / DO sentences. The studio builds a real C64 program for you.", global.TH.text_dim, _split - _x1 - 70, global.f_body, 1);
+     var _bx = _x1 + 28;
+     var _by = _y1 + 176;
+-    if (ui_button("home_tour", _bx, _by, 190, 40, "Take the guided tour", "Guided tour|A full walk-through of every page, from painting the screen to playing your game. Takes about five minutes.", BTN_ACCENT))
++    // the buttons shrink to fit when the left panel is narrow
++    var _k = min(1, (_split - 10 - 28 - _bx) / 760);
++    if (ui_button("home_tour", _bx, _by, 190 * _k, 40, "Take the guided tour", "Guided tour|A full walk-through of every page, from painting the screen to playing your game. Takes about five minutes.", BTN_ACCENT))
+     {
+         tut_start(-1);
+     }
+-    if (ui_button("home_example", _bx + 200, _by, 190, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
++    if (ui_button("home_example", _bx + 200 * _k, _by, 190 * _k, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
+     {
+         home_new(true);
+     }
+-    if (ui_button("home_new", _bx + 400, _by, 80, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
+-    if (ui_button("home_open", _bx + 488, _by, 80, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
+-    if (ui_button("home_save", _bx + 576, _by, 80, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
+-    if (ui_button("home_saveas", _bx + 664, _by, 96, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
++    if (ui_button("home_new", _bx + 400 * _k, _by, 80 * _k, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
++    if (ui_button("home_open", _bx + 488 * _k, _by, 80 * _k, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
++    if (ui_button("home_save", _bx + 576 * _k, _by, 80 * _k, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
++    if (ui_button("home_saveas", _bx + 664 * _k, _by, 96 * _k, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
+ 
+     // ---------- workflow cards ----------
+     var _cy = _y1 + 270;
+diff --git a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+index f808e30..eeceac8 100644
+--- a/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
++++ b/C64NoCode/scripts/scr_ws_hud/scr_ws_hud.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - the UI page (ported from ADAM's UI page): design your own HUD.
++/// C64 ENGINE - the UI page (ported from ADAM's UI page): design your own HUD.
+ /// Left: switch it on, where it goes, its height, the frame and font styles, and the fields.
+ /// Centre: the game screen with the HUD (drag a field to move it), then the frame or font editor.
+ /// Right: the picked field. The model, the preview and the 6502 side are in scr_hud.
+diff --git a/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml b/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
+index d6adcbd..38d7de1 100644
+--- a/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
++++ b/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Logic workspace (WHEN / DO rule cards in groups, and the code previewer)
++/// C64 ENGINE - Logic workspace (WHEN / DO rule cards in groups, and the code previewer)
+ 
+ #macro LOGIC_DO_ROW_H 40         // each AND DO line makes a rule card this much taller
+ #macro LOGIC_WHEN_W 210          // the WHEN drop-down: room for 'Actor hits the scenery'
+diff --git a/C64NoCode/scripts/scr_ws_music/scr_ws_music.gml b/C64NoCode/scripts/scr_ws_music/scr_ws_music.gml
+index 06b2596..cdaaa49 100644
+--- a/C64NoCode/scripts/scr_ws_music/scr_ws_music.gml
++++ b/C64NoCode/scripts/scr_ws_music/scr_ws_music.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Music workspace (ADAM's Music page, for the SID's 3 voices)
++/// C64 ENGINE - Music workspace (ADAM's Music page, for the SID's 3 voices)
+ /// Left: the loop library. Centre: the song toolbar, the 3-voice timeline you paint loops onto,
+ /// and below it the loop editor (drum grid or piano roll) or where each song plays.
+ 
+@@ -222,7 +222,7 @@ function music_export_sid()
+ /// Writes project _p's songs to _path as a PSID v2 file (the driver at $1000). Returns the code size, or -1.
+ function music_sid_save(_p, _path)
+ {
+-    var L = ["; PSID tune made by C64 No-Code Studio", "* = $1000", " jmp psid_init", " jmp mus_update",
++    var L = ["; PSID tune made by " + APP_NAME, "* = $1000", " jmp psid_init", " jmp mus_update",
+              "psid_init:", " pha", " lda #$0f", " sta $d418", " lda #0", " sta $d417", " pla", " jmp mus_play"];
+     music_emit(L, _p);
+     array_push(L, "sv_t:", " .fill 8,0");
+@@ -264,7 +264,7 @@ function music_sid_save(_p, _path)
+     _w16(_b, 0);
+     _w16(_b, 0);                                    // speed: every song once a frame (vertical blank)
+     _wstr(_b, string_copy(_p.name, 1, 31));
+-    _wstr(_b, "C64 No-Code Studio");
++    _wstr(_b, APP_NAME);
+     _wstr(_b, string(current_year));
+     var _flags = 0x14;                              // PAL, 6581
+     if (_p.machine == MACHINE_NTSC) { _flags = 0x18; }
+diff --git a/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml b/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
+index 3da6fee..64c026f 100644
+--- a/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
++++ b/C64NoCode/scripts/scr_ws_screen/scr_ws_screen.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Screen workspace (character painter)
++/// C64 ENGINE - Screen workspace (character painter)
+ 
+ function ws_screen_draw(_x1, _y1, _x2, _y2)
+ {
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index c7f7a3e..eef7d43 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - top bar, workspace switching, shortcuts
++/// C64 ENGINE - top bar, workspace switching, shortcuts
+ 
+ #macro WS_HOME 0
+ #macro WS_SCREEN 1
+@@ -40,7 +40,12 @@ function ui_c64_text(_x, _y, _str, _scale, _col)
+     return string_length(_str) * 8 * _scale;
+ }
+ 
+-/// Logo capsule: "64  C64 NO-CODE" in the C64 font + rainbow stripes. Returns its width.
++// the product's name (the project file, settings and save folder keep their old names, so
++// existing projects and settings carry on working)
++#macro APP_NAME "C64 Engine"
++#macro APP_LOGO "C64 ENGINE"
++
++/// Logo capsule: "64  C64 ENGINE" in the C64 font + rainbow stripes. Returns its width.
+ function draw_logo(_x, _y, _compact)
+ {
+     var _h = 34;
+@@ -48,7 +53,7 @@ function draw_logo(_x, _y, _compact)
+     var _r = _h * 0.5;
+     var _ty = _y + (_h - 8 * _sc) * 0.5;
+     var _badge_w = 2 * 8 * _sc;
+-    var _title_w = 11 * 8 * _sc;
++    var _title_w = string_length(APP_LOGO) * 8 * _sc;
+     if (_compact) { _title_w = -14; }          // narrow window: just the 64 badge and the stripes
+     var _stripe_x = _x + 14 + _badge_w + 14 + _title_w + 12;
+     var _w = (_stripe_x - _x) + 34 + 6;
+@@ -57,7 +62,7 @@ function draw_logo(_x, _y, _compact)
+     ui_rrect(_x + 2, _y + 1, _x + _w - 2, _y + _h * 0.45, _r - 1, c_white, c_white, 0.06);
+     ui_rrect_line(_x, _y, _x + _w, _y + _h, _r, global.TH.panel_edge, 0.8, 1);
+     ui_c64_text(_x + 14, _ty, "64", _sc, c_white);
+-    if (!_compact) { ui_c64_text(_x + 14 + _badge_w + 14, _ty, "C64 NO-CODE", _sc, global.TH.text); }
++    if (!_compact) { ui_c64_text(_x + 14 + _badge_w + 14, _ty, APP_LOGO, _sc, global.TH.text); }
+     // breadbin rainbow stripes at the right end
+     var _stripes = [make_colour_rgb(222, 72, 72), make_colour_rgb(240, 150, 60), make_colour_rgb(240, 210, 80), make_colour_rgb(90, 190, 110), make_colour_rgb(80, 140, 230)];
+     var _st = _y + 8;
+diff --git a/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml b/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
+index 8ae497c..cb4034a 100644
+--- a/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
++++ b/C64NoCode/scripts/scr_ws_sound/scr_ws_sound.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Sound workspace (SID effects, in folders)
++/// C64 ENGINE - Sound workspace (SID effects, in folders)
+ 
+ /// "8 ms" / "1.5 s" for an ADSR time in milliseconds
+ function snd_ms_text(_ms)
+diff --git a/C64NoCode/scripts/scr_ws_sprites/scr_ws_sprites.gml b/C64NoCode/scripts/scr_ws_sprites/scr_ws_sprites.gml
+index 205e96b..2f54692 100644
+--- a/C64NoCode/scripts/scr_ws_sprites/scr_ws_sprites.gml
++++ b/C64NoCode/scripts/scr_ws_sprites/scr_ws_sprites.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - Sprites workspace (pixel editor)
++/// C64 ENGINE - Sprites workspace (pixel editor)
+ 
+ function spr_get_px(_s, _x, _y)
+ {
+diff --git a/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml b/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
+index 7ae74f3..d8d6764 100644
+--- a/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
++++ b/C64NoCode/scripts/scr_ws_tiles/scr_ws_tiles.gml
+@@ -1,4 +1,4 @@
+-/// C64 NO-CODE STUDIO - the Tiles page (ported from ADAM's Tiles page).
++/// C64 ENGINE - the Tiles page (ported from ADAM's Tiles page).
+ /// Left: the tile set as a grid of pictures, New / Remove, and Dig and place for the game.
+ /// Centre: the Tile set tab draws a tile's pixels straight onto its 4 characters (a character
+ /// that other tiles share is copied first, so they don't change), the Characters tab picks

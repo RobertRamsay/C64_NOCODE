@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - bitmaps: full-screen 320 x 200 pictures (the Bitmaps page), ported from
+/// C64 ENGINE - bitmaps: full-screen 320 x 200 pictures (the Bitmaps page), ported from
 /// the C64 Dev Machine's bitmap editor and laid out like ADAM's Backdrop page.
 ///
 /// A bitmap is multicolour (160 x 200, pixels twice as wide) or hi-res (320 x 200). Every pixel

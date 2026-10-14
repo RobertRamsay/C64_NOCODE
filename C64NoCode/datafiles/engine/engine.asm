@@ -1,5 +1,5 @@
 ; =====================================================================
-;  C64 NO-CODE STUDIO - MAP GAME ENGINE  (stock C64, PAL)
+;  C64 ENGINE - MAP GAME ENGINE  (stock C64, PAL)
 ;  Scrolling: none / horizontal / vertical / 8-way follow / flip-screen
 ;  Kinds: shoot-em-up, platformer, cave digger, top-down
 ;  $01=$35 (BASIC+KERNAL out), own IRQ at $FFFE, VIC bank 3:

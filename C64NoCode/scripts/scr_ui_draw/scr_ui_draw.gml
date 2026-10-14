@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - rounded, gradient drawing primitives
+/// C64 ENGINE - rounded, gradient drawing primitives
 
 function ui_rr_points(_x1, _y1, _x2, _y2, _r)
 {

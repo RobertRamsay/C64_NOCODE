@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - live build: the game is generated and assembled again a moment after
+/// C64 ENGINE - live build: the game is generated and assembled again a moment after
 /// each change (never mid-stroke). It feeds the code previewer on the Logic page and the
 /// memory bar in the status bar.
 

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - SID sound effects: data model, presets, preview synth and the 6502 player
+/// C64 ENGINE - SID sound effects: data model, presets, preview synth and the 6502 player
 /// One player is used by both kinds of game (single screen codegen and the map engine).
 /// Sounds play on SID voice 1 or 2, borrowing it from the music while they play; voice 3 is the
 /// music's alone (scr_music). The player runs once a frame (50 Hz PAL, 60 Hz NTSC).

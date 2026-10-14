@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - animations (the Animate page), ported from ADAM.
+/// C64 ENGINE - animations (the Animate page), ported from ADAM.
 /// Each member of the cast - the actors of a single-screen game; the player, its shot, the
 /// enemies' shot and the enemy types of a map game - can have ADAM's animations: Idle, Walk,
 /// Jump, Fall, the 8 joystick directions (N NE E SE S SW W NW), Fire and Fire + the 8

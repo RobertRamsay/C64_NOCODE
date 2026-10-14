@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Build workspace
+/// C64 ENGINE - Build workspace
 
 function build_log_add(_text, _kind)
 {

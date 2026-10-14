@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - the Bitmaps page: paint full-screen C64 bitmaps (multicolour or hi-res),
+/// C64 ENGINE - the Bitmaps page: paint full-screen C64 bitmaps (multicolour or hi-res),
 /// import PNG / JPG / Koala / Art Studio pictures, and choose where they show: the title screen,
 /// the loading screen, game over, you win, before a level (map games) or from a rule (Logic page).
 /// Tools as the C64 Dev Machine's bitmap editor, laid out like ADAM's Backdrop page.

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - chargen glyphs, C64 screen preview, sprite caches
+/// C64 ENGINE - chargen glyphs, C64 screen preview, sprite caches
 
 function chargen_init()
 {

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - game templates (all built from code, no external files)
+/// C64 ENGINE - game templates (all built from code, no external files)
 
 function templates_init()
 {

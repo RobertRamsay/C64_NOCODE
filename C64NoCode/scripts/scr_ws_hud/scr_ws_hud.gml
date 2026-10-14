@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - the UI page (ported from ADAM's UI page): design your own HUD.
+/// C64 ENGINE - the UI page (ported from ADAM's UI page): design your own HUD.
 /// Left: switch it on, where it goes, its height, the frame and font styles, and the fields.
 /// Centre: the game screen with the HUD (drag a field to move it), then the frame or font editor.
 /// Right: the picked field. The model, the preview and the 6502 side are in scr_hud.

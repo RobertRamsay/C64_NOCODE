@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - hover helper lines, help bubbles, status bar, toasts
+/// C64 ENGINE - hover helper lines, help bubbles, status bar, toasts
 
 function ui_help_draw(_gw, _gh)
 {

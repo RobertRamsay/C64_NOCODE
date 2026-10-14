@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - C64 Ultimate (and Ultimate 64 / 1541 Ultimate II+) over the network.
+/// C64 ENGINE - C64 Ultimate (and Ultimate 64 / 1541 Ultimate II+) over the network.
 /// Uses the Ultimate's REST API: GET /v1/version to test the address, POST /v1/runners:run_prg
 /// with the .PRG as the body to load and run it, PUT /v1/machine:reset to reset the C64.
 /// Turn on "Web Remote Control Service" in the Ultimate's network settings first.

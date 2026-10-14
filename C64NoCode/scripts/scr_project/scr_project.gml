@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - project data model, presets, save/load, undo
+/// C64 ENGINE - project data model, presets, save/load, undo
 
 #macro SPR_COUNT 32
 

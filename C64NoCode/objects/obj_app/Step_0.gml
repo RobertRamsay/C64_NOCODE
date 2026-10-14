@@ -54,7 +54,7 @@ live_step();
 // music preview: keep its audio queue fed
 music_preview_step();
 
-var _cap = "C64 No-Code Studio - " + proj.name;
+var _cap = APP_NAME + " - " + proj.name;
 if (proj_dirty) { _cap += " *"; }
 if (_cap != caption_last)
 {

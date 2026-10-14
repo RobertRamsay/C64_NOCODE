@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - the Tiles page (ported from ADAM's Tiles page).
+/// C64 ENGINE - the Tiles page (ported from ADAM's Tiles page).
 /// Left: the tile set as a grid of pictures, New / Remove, and Dig and place for the game.
 /// Centre: the Tile set tab draws a tile's pixels straight onto its 4 characters (a character
 /// that other tiles share is copied first, so they don't change), the Characters tab picks

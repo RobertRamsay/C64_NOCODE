@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - music: loop library, SID instruments, songs, the song compiler,
+/// C64 ENGINE - music: loop library, SID instruments, songs, the song compiler,
 /// the 6502 music driver and the preview player (it runs the driver's logic frame by frame).
 ///
 /// Arrangement (song.arr), as ADAM's Music page but for the SID's 3 voices:

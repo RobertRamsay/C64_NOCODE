@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - compact two-pass 6502 assembler
+/// C64 ENGINE - compact two-pass 6502 assembler
 /// Modes: 0 IMP, 1 ACC, 2 IMM, 3 ZP, 4 ZPX, 5 ZPY, 6 ABS, 7 ABX, 8 ABY, 9 IND, 10 IZX, 11 IZY, 12 REL
 /// Directives: * = addr, name = expr, .byte, .fill n,v, .align n, .padto addr
 /// Expressions: + - * / and < > prefixes, $hex, %bin, decimal, labels.

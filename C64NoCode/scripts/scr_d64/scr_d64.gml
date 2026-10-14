@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - .d64 disk images (a 1541 floppy: 35 tracks, 683 sectors of 256 bytes),
+/// C64 ENGINE - .d64 disk images (a 1541 floppy: 35 tracks, 683 sectors of 256 bytes),
 /// for games with a loading screen: the loader first (so LOAD"*",8,1 and VICE's autostart run
 /// it), then the game, which the loader loads by name while it shows the bitmap.
 

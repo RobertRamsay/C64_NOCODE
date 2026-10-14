@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - SID sound preview inside the editor (rendered by sfx_render in scr_sid)
+/// C64 ENGINE - SID sound preview inside the editor (rendered by sfx_render in scr_sid)
 
 function sfx_preview_stop()
 {

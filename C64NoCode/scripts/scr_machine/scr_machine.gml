@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - target machine profiles (picked in the top bar, saved in the project)
+/// C64 ENGINE - target machine profiles (picked in the top bar, saved in the project)
 /// PAL and NTSC change the frame rate (timers, sound speed) and the SID clock.
 /// The C64 Ultimate is a PAL C64 that Build and play sends the game to over the network.
 

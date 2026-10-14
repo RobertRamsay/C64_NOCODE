@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Sound workspace (SID effects, in folders)
+/// C64 ENGINE - Sound workspace (SID effects, in folders)
 
 /// "8 ms" / "1.5 s" for an ADSR time in milliseconds
 function snd_ms_text(_ms)

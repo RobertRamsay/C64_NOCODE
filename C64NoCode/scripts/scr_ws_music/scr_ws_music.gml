@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Music workspace (ADAM's Music page, for the SID's 3 voices)
+/// C64 ENGINE - Music workspace (ADAM's Music page, for the SID's 3 voices)
 /// Left: the loop library. Centre: the song toolbar, the 3-voice timeline you paint loops onto,
 /// and below it the loop editor (drum grid or piano roll) or where each song plays.
 
@@ -222,7 +222,7 @@ function music_export_sid()
 /// Writes project _p's songs to _path as a PSID v2 file (the driver at $1000). Returns the code size, or -1.
 function music_sid_save(_p, _path)
 {
-    var L = ["; PSID tune made by C64 No-Code Studio", "* = $1000", " jmp psid_init", " jmp mus_update",
+    var L = ["; PSID tune made by " + APP_NAME, "* = $1000", " jmp psid_init", " jmp mus_update",
              "psid_init:", " pha", " lda #$0f", " sta $d418", " lda #0", " sta $d417", " pla", " jmp mus_play"];
     music_emit(L, _p);
     array_push(L, "sv_t:", " .fill 8,0");
@@ -264,7 +264,7 @@ function music_sid_save(_p, _path)
     _w16(_b, 0);
     _w16(_b, 0);                                    // speed: every song once a frame (vertical blank)
     _wstr(_b, string_copy(_p.name, 1, 31));
-    _wstr(_b, "C64 No-Code Studio");
+    _wstr(_b, APP_NAME);
     _wstr(_b, string(current_year));
     var _flags = 0x14;                              // PAL, 6581
     if (_p.machine == MACHINE_NTSC) { _flags = 0x18; }

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Logic workspace (WHEN / DO rule cards in groups, and the code previewer)
+/// C64 ENGINE - Logic workspace (WHEN / DO rule cards in groups, and the code previewer)
 
 #macro LOGIC_DO_ROW_H 40         // each AND DO line makes a rule card this much taller
 #macro LOGIC_WHEN_W 210          // the WHEN drop-down: room for 'Actor hits the scenery'

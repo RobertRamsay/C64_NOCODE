@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Sprites workspace (pixel editor)
+/// C64 ENGINE - Sprites workspace (pixel editor)
 
 function spr_get_px(_s, _x, _y)
 {

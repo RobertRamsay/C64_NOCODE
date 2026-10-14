@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - the custom HUD (UI page, ported from ADAM's UI page): a panel strip at
+/// C64 ENGINE - the custom HUD (UI page, ported from ADAM's UI page): a panel strip at
 /// the top or bottom of the screen (1 to 6 text rows), drawn with a 9-slice frame of 9 characters
 /// (corners, edges and a fill), a font style (or a font drawn on the page) and the fields: text,
 /// score, lives, the level goal and the level, each with its own place and colour.

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - sampled sounds ("digis"), ported from ADAM's Sound page sample import.
+/// C64 ENGINE - sampled sounds ("digis"), ported from ADAM's Sound page sample import.
 /// A WAV is kept as an 8-bit mono source (up to 22 kHz, 5 seconds). The C64 plays it the classic
 /// way: a CIA 2 timer fires an NMI a few thousand times a second and each NMI writes the next
 /// 4-bit sample to the SID's master volume ($D418, low nibble). Two samples are packed in a byte.

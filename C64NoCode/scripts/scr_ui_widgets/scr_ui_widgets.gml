@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - immediate-mode widgets (run in obj_app scope)
+/// C64 ENGINE - immediate-mode widgets (run in obj_app scope)
 /// Help strings use "Title|Longer explanation" format.
 
 #macro BTN_NORMAL 0

@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Screen workspace (character painter)
+/// C64 ENGINE - Screen workspace (character painter)
 
 function ws_screen_draw(_x1, _y1, _x2, _y2)
 {

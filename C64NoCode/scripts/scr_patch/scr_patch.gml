@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Patch sounds (Sound page, kind 2), ported from ADAM's Patch synth.
+/// C64 ENGINE - Patch sounds (Sound page, kind 2), ported from ADAM's Patch synth.
 /// ADAM renders its patch into a Paula sample. The SID already is the synth ADAM imitates -
 /// three oscillators, hard sync, ring modulation, a resonant multimode filter - so here a patch
 /// plays on the real chip: the studio works out what to write to every SID register on every

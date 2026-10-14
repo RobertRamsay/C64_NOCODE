@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - tutorials: a full guided tour plus a mini tour per page
+/// C64 ENGINE - tutorials: a full guided tour plus a mini tour per page
 
 function tut_step(_tab, _target, _title, _body)
 {
@@ -9,7 +9,7 @@ function tut_init()
 {
     tut_steps = [
         // ---------- HOME ----------
-        tut_step(WS_HOME, "", "Welcome to C64 No-Code Studio", "You are going to make a real Commodore 64 game without writing a single line of code. This tour visits every page. Use Next and Back, or the arrow keys. Press Esc to leave at any time."),
+        tut_step(WS_HOME, "", "Welcome to " + APP_NAME, "You are going to make a real Commodore 64 game without writing a single line of code. This tour visits every page. Use Next and Back, or the arrow keys. Press Esc to leave at any time."),
         tut_step(WS_HOME, "home_example", "Try the example first", "This loads 'Gem Hunter', a finished little game. It is a great way to see how everything fits together. Go ahead and click it if you like - you can Undo or start a New project any time."),
         tut_step(WS_HOME, "home_card_0", "Six simple steps", "Every game is made the same way: paint a screen, draw sprites, place actors, write rules, add sounds, then build. Click any card to jump to that page."),
         tut_step(WS_HOME, "home_name", "Name your game", "Give your game a name. It is also used for the file names when you save and build."),

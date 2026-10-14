@@ -1,11 +1,11 @@
-/// C64 NO-CODE STUDIO - Home workspace
+/// C64 ENGINE - Home workspace
 
 function home_save(_save_as)
 {
     var _path = proj_path;
     if (_save_as || _path == "")
     {
-        _path = get_save_filename("C64 No-Code project|*.c64nc", proj.name + ".c64nc");
+        _path = get_save_filename(APP_NAME + " project|*.c64nc", proj.name + ".c64nc");
         if (_path == "") { return; }
         if (filename_ext(_path) == "") { _path += ".c64nc"; }
     }
@@ -18,7 +18,7 @@ function home_open()
     {
         if (!show_question("You have unsaved changes. Open another project anyway?")) { return; }
     }
-    var _path = get_open_filename("C64 No-Code project|*.c64nc", "");
+    var _path = get_open_filename(APP_NAME + " project|*.c64nc", "");
     if (_path != "") { project_load_from(_path); }
 }
 
@@ -44,23 +44,28 @@ function ws_home_draw(_x1, _y1, _x2, _y2)
     var _split = _x1 + floor((_x2 - _x1) * 0.6);
     // ---------- hero ----------
     ui_panel(_x1, _y1, _split - 10, _y1 + 250, "");
+    // the product's mark, top right of the hero (the top bar drops its name when the tabs need the room)
+    var _bw = string_length(APP_LOGO) * 8 * 2;
+    if (_split - 10 - 28 - _bw > _x1 + 560) { ui_c64_text(_split - 10 - 28 - _bw, _y1 + 30, APP_LOGO, 2, global.TH.accent2); }
     ui_text(_x1 + 28, _y1 + 26, "Make a Commodore 64 game.", c_white, fa_left, fa_top, global.f_hero, 1);
     ui_text(_x1 + 28, _y1 + 62, "No code needed.", global.TH.accent, fa_left, fa_top, global.f_hero, 1);
     ui_text_wrap(_x1 + 28, _y1 + 106, "Paint a screen, draw sprites, choose how things move and write the rules as simple WHEN / DO sentences. The studio builds a real C64 program for you.", global.TH.text_dim, _split - _x1 - 70, global.f_body, 1);
     var _bx = _x1 + 28;
     var _by = _y1 + 176;
-    if (ui_button("home_tour", _bx, _by, 190, 40, "Take the guided tour", "Guided tour|A full walk-through of every page, from painting the screen to playing your game. Takes about five minutes.", BTN_ACCENT))
+    // the buttons shrink to fit when the left panel is narrow
+    var _k = min(1, (_split - 10 - 28 - _bx) / 760);
+    if (ui_button("home_tour", _bx, _by, 190 * _k, 40, "Take the guided tour", "Guided tour|A full walk-through of every page, from painting the screen to playing your game. Takes about five minutes.", BTN_ACCENT))
     {
         tut_start(-1);
     }
-    if (ui_button("home_example", _bx + 200, _by, 190, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
+    if (ui_button("home_example", _bx + 200 * _k, _by, 190 * _k, 40, "Load example game", "Example game|Loads 'Gem Hunter', a finished little game. Look around every page to see how it was made, then build it.", BTN_ON))
     {
         home_new(true);
     }
-    if (ui_button("home_new", _bx + 400, _by, 80, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
-    if (ui_button("home_open", _bx + 488, _by, 80, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
-    if (ui_button("home_save", _bx + 576, _by, 80, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
-    if (ui_button("home_saveas", _bx + 664, _by, 96, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
+    if (ui_button("home_new", _bx + 400 * _k, _by, 80 * _k, 40, "New", "New project|Starts a blank project.", BTN_NORMAL)) { home_new(false); }
+    if (ui_button("home_open", _bx + 488 * _k, _by, 80 * _k, 40, "Open", "Open project|Opens a .c64nc project file you saved earlier.", BTN_NORMAL)) { home_open(); }
+    if (ui_button("home_save", _bx + 576 * _k, _by, 80 * _k, 40, "Save", "Save project|Saves your project (Ctrl+S). The first time it asks where to put it.", BTN_NORMAL)) { home_save(false); }
+    if (ui_button("home_saveas", _bx + 664 * _k, _by, 96 * _k, 40, "Save as", "Save as|Saves a copy of your project under a new name.", BTN_GHOST)) { home_save(true); }
 
     // ---------- workflow cards ----------
     var _cy = _y1 + 270;

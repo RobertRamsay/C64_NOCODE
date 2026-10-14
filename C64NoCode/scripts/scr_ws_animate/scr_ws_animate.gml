@@ -1,4 +1,4 @@
-/// C64 NO-CODE STUDIO - Animate page (ADAM's): Idle, Walk, Jump and Fall animations of up to
+/// C64 ENGINE - Animate page (ADAM's): Idle, Walk, Jump and Fall animations of up to
 /// 16 frames for each cast member, or the 8 joystick directions, and Fire animations for the
 /// player - with a test mode driven by the arrow keys, WASD or a gamepad.
 /// Data, plans and the 6502 player are in scr_anim.
