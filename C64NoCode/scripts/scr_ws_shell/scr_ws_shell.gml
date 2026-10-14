@@ -11,7 +11,8 @@
 #macro WS_ANIMATE 14
 #macro WS_BITMAPS 15
 #macro WS_UI 16
-#macro WS_COUNT 17
+#macro WS_LEVELS 17
+#macro WS_COUNT 18
 
 function ws_set(_i)
 {
@@ -283,12 +284,12 @@ function ws_tabs()
     {
         return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_BITMAPS, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
     }
-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
+    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_LEVELS, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
 }
 
 function ws_name(_w)
 {
-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps", "UI"];
+    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps", "UI", "Levels"];
     return _n[_w];
 }
 
@@ -311,7 +312,8 @@ function ws_help(_w)
         "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play.",
         "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left.",
         "Bitmaps|Paint full-screen C64 bitmaps in multicolour or hi-res, or import PNG, JPG and Koala pictures, and show them as the title screen, the loading screen, the game over and winning screens, before a level or from a rule. Each takes about 10 KB of the game.",
-        "UI|Design your own HUD: a panel at the top or bottom with a frame of 9 characters, a font style or letters you draw, and the score, lives, goal and level placed where you want them."
+        "UI|Design your own HUD: a panel at the top or bottom with a frame of 9 characters, a font style or letters you draw, and the score, lives, goal and level placed where you want them.",
+        "Levels|Up to 8 levels, each with its own hills grown from a seed and shaped by hand, for actors to walk on. Also the level goal counter, the level card and the title screen."
     ];
     return _h[_w];
 }

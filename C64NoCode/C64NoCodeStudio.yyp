@@ -63,6 +63,8 @@
     {"id":{"name":"scr_ws_engine","path":"scripts/scr_ws_engine/scr_ws_engine.yy",},},
     {"id":{"name":"scr_ws_animate","path":"scripts/scr_ws_animate/scr_ws_animate.yy",},},
     {"id":{"name":"scr_ws_bitmap","path":"scripts/scr_ws_bitmap/scr_ws_bitmap.yy",},},
+    {"id":{"name":"scr_stages","path":"scripts/scr_stages/scr_stages.yy",},},
+    {"id":{"name":"scr_ws_levels","path":"scripts/scr_ws_levels/scr_ws_levels.yy",},},
     {"id":{"name":"scr_ws_home","path":"scripts/scr_ws_home/scr_ws_home.yy",},},
     {"id":{"name":"scr_ws_hud","path":"scripts/scr_ws_hud/scr_ws_hud.yy",},},
     {"id":{"name":"scr_ws_logic","path":"scripts/scr_ws_logic/scr_ws_logic.yy",},},

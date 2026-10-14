@@ -4,14 +4,14 @@
 
 function project_defs_init()
 {
-    global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)"];
+    global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)", "Player on the ground", "Walker on the ground"];
     global.WHEN_NAMES = ["Actor touches actor", "Fire button is pressed", "Every few seconds", "Score reaches", "Lives run out", "The game starts",
                          "Actor hits the scenery"];
     global.DO_NAMES   = ["Add to score", "Lose a life", "Play a sound", "Flash the border", "Send actor back to start",
                          "Move actor to a random spot", "Hide actor", "Show actor", "Change actor colour",
                          "Change background colour", "Game over", "You win!", "Speed up actor",
                          "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds",
-                         "Play music", "Stop music", "Show a bitmap"];
+                         "Play music", "Stop music", "Show a bitmap", "Count towards the level goal"];
     global.TEMPLATE_NAMES = ["Player touches enemy: lose a life", "Player touches pickup: score + move pickup",
                              "Score target: you win", "Out of lives: game over", "Every 10 seconds: speed up enemy",
                              "Fire button: play a sound"];
@@ -45,6 +45,7 @@ function actor_new(_name)
         x : 172,
         y : 140,
         visible : true,
+        from_level : 1,
         start_left : false,
         start_up : false,
         anims : anims_new(),        // the Animate page (scr_anim)
@@ -101,7 +102,18 @@ function project_new()
         pic_over : -1,
         pic_win : -1,
         // the UI page: the custom HUD
-        hud : hud_new()
+        hud : hud_new(),
+        // the Levels page (single-screen games): levels with hills, the goal, the title
+        levels_on : false,
+        stages : [],
+        terrain_cols : [13, 5, 9, 8],
+        goal_on : false,
+        goal_label : "GEMS",
+        goal : 10,
+        title_on : false,
+        title1 : "MY GAME",
+        title2 : "PRESS FIRE TO START",
+        lev_text : "LEVEL"
     };
     for (var i = 0; i < 8; i++)
     {
@@ -390,6 +402,7 @@ function project_from_loaded(_raw)
     _p.levels = _lvls;
     bmp_project_fix(_p);
     hud_project_fix(_p);
+    stages_fix(_p);
     return _p;
 }
 

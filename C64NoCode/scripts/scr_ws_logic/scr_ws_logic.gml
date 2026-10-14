@@ -154,6 +154,7 @@ function logic_do_phrase(_d, _names, _na)
             var _pn = "show the bitmap '" + proj.pictures[clamp(_d.value, 0, array_length(proj.pictures) - 1)].name + "'";
             if (_d.target > 0) { return _pn + " for " + string(_d.target) + " seconds"; }
             return _pn + " until fire is pressed";
+        case 20: return "count one towards the level goal";
     }
     return "?";
 }

@@ -28,6 +28,7 @@ switch (ws)
     case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
     case WS_BITMAPS: ws_bitmap_draw(_x1, _y1, _x2, _y2);  break;
     case WS_UI:      ws_hud_draw(_x1, _y1, _x2, _y2);     break;
+    case WS_LEVELS:  ws_levels_draw(_x1, _y1, _x2, _y2);  break;
 }
 
 draw_topbar(gui_w);

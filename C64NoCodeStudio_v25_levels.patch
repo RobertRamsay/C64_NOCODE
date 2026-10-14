@@ -1,0 +1,1114 @@
+diff --git a/C64NoCode/C64NoCodeStudio.yyp b/C64NoCode/C64NoCodeStudio.yyp
+index 76e004d..ac9e857 100644
+--- a/C64NoCode/C64NoCodeStudio.yyp
++++ b/C64NoCode/C64NoCodeStudio.yyp
+@@ -63,6 +63,8 @@
+     {"id":{"name":"scr_ws_engine","path":"scripts/scr_ws_engine/scr_ws_engine.yy",},},
+     {"id":{"name":"scr_ws_animate","path":"scripts/scr_ws_animate/scr_ws_animate.yy",},},
+     {"id":{"name":"scr_ws_bitmap","path":"scripts/scr_ws_bitmap/scr_ws_bitmap.yy",},},
++    {"id":{"name":"scr_stages","path":"scripts/scr_stages/scr_stages.yy",},},
++    {"id":{"name":"scr_ws_levels","path":"scripts/scr_ws_levels/scr_ws_levels.yy",},},
+     {"id":{"name":"scr_ws_home","path":"scripts/scr_ws_home/scr_ws_home.yy",},},
+     {"id":{"name":"scr_ws_hud","path":"scripts/scr_ws_hud/scr_ws_hud.yy",},},
+     {"id":{"name":"scr_ws_logic","path":"scripts/scr_ws_logic/scr_ws_logic.yy",},},
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index c0c831c..4115729 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -308,6 +308,10 @@ hud_prev_surf = -1;
+ hud_sheet_key = "";
+ hud_sheet_tick = 0;
+ hud_away = true;
++// the Levels page
++lvl_sel = 0;
++lvl_drawing = false;
++lvl_last_x = -1;
+ mus_pl = undefined;
+ mus_queue = -1;
+ mus_inst = -1;
+diff --git a/C64NoCode/objects/obj_app/Draw_64.gml b/C64NoCode/objects/obj_app/Draw_64.gml
+index 9ddbeca..5c42419 100644
+--- a/C64NoCode/objects/obj_app/Draw_64.gml
++++ b/C64NoCode/objects/obj_app/Draw_64.gml
+@@ -28,6 +28,7 @@ switch (ws)
+     case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
+     case WS_BITMAPS: ws_bitmap_draw(_x1, _y1, _x2, _y2);  break;
+     case WS_UI:      ws_hud_draw(_x1, _y1, _x2, _y2);     break;
++    case WS_LEVELS:  ws_levels_draw(_x1, _y1, _x2, _y2);  break;
+ }
+ 
+ draw_topbar(gui_w);
+diff --git a/C64NoCode/scripts/scr_codegen/scr_codegen.gml b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+index d23b735..26a9701 100644
+--- a/C64NoCode/scripts/scr_codegen/scr_codegen.gml
++++ b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+@@ -131,12 +131,36 @@ function cg_do_lines(L, _p, _d, _tag, na)
+             if (_ps == 255) { array_push(L, " rts"); }
+             else { array_push(L, " lda #" + string(_ps), " ldx #" + string(clamp(_d.target, 0, 30)), " jmp pic_show"); }
+             break;
++        case 20:
++            // count one towards the level goal (Levels page): reaching it moves on after this frame
++            if (!_p.goal_on) { array_push(L, " rts"); break; }
++            array_push(L, " lda goal_got", " cmp #99", " bcs gq" + _tag, " inc goal_got", "gq" + _tag + ":", " jsr draw_hud");
++            array_push(L, " lda goal_got", " cmp #" + string(clamp(_p.goal, 1, 99)), " bcc gr" + _tag, " lda #1", " sta lvl_pend", "gr" + _tag + ":", " rts");
++            break;
+         default:
+             array_push(L, " rts");
+             break;
+     }
+ }
+ 
++/// The code that wins the game (DO 'You win!', and after the last level)
++function cg_win_lines(_p)
++{
++    if (_p.pic_win >= 0 && _p.pic_win < array_length(_p.pictures)) { return [" lda #" + string(bmp_slot(bmp_game_list(_p), _p.pic_win)), " jmp pic_end_scr"]; }
++    return [" ldx #<txt_win", " ldy #>txt_win", " jmp end_screen"];
++}
++
++/// Does the game draw hills (levels on), or need the ground line (actors that walk on it)?
++function stage_has_hills(_p, na)
++{
++    if (_p.levels_on) { return true; }
++    for (var a = 0; a < na; a++)
++    {
++        if (role_on_ground(_p.actors[a].role)) { return true; }
++    }
++    return false;
++}
++
+ /// Returns { src, warnings[], lines[], marks[] } - marks are { rule, from, to } line ranges
+ /// (the rule's check and its actions) for the code previewer.
+ function codegen_project(_p)
+@@ -160,7 +184,7 @@ function codegen_project(_p)
+     var _player = -1;
+     for (var i = 0; i < na; i++)
+     {
+-        if (_acts[i].role == 0)
++        if (role_is_player(_acts[i].role))
+         {
+             _player = i;
+             break;
+@@ -174,8 +198,10 @@ function codegen_project(_p)
+     if (_chase_target < 0) { _chase_target = 0; }
+ 
+     var _names = ["ax_lo", "ax_hi", "ay", "aspd", "avis", "adx", "ady", "latch",
+-                  "joy", "fcount", "sectick", "coll", "bcoll", "tmp", "tmp2", "lives", "score_lo", "score_hi", "flash", "acnt"];
+-    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
++                  "joy", "fcount", "sectick", "coll", "bcoll", "tmp", "tmp2", "lives", "score_lo", "score_hi", "flash", "acnt",
++                  "level", "goal_got", "lvl_pend", "avy", "agr", "tmp3", "tmp4", "tmp5", "tmp6", "hcol", "hrow", "hch", "hcl", "hdep"];
++    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
++                  1, 1, 1, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+     var _varlen = 0;
+     for (var vl = 0; vl < array_length(_sizes); vl++) { _varlen += _sizes[vl]; }
+ 
+@@ -191,11 +217,15 @@ function codegen_project(_p)
+     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
+     array_push(L, " lda #" + string(_p.border), " sta $d020", " lda #" + string(_p.background), " sta $d021");
+     array_push(L, " lda #$1b", " sta $d011", " jsr set_chars", " lda #$c8", " sta $d016");
+-    array_push(L, " jsr draw_screen");
+     array_push(L, " jsr sfx_init");
+-    // the screen's song (Music page: Where the music plays); one already playing carries on
++    // the first level's song (Music page: Where the music plays); one already playing carries on
+     array_push(L, " lda #0", " jsr mus_level");
+-
++    array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
++    // the Levels page: the title screen, then the first level (screen, hills, actors)
++    if (_p.title_on) { array_push(L, " jsr title_screen"); }
++    array_push(L, " jsr level_begin");
++    var _init = [];
++    array_push(_init, "actors_init:");
+     var _mc = 0;
+     for (var a = 0; a < na; a++)
+     {
+@@ -205,27 +235,26 @@ function codegen_project(_p)
+         var _x = clamp(floor(_ac.x), CG_XMIN, CG_XMAX);
+         var _y = clamp(floor(_ac.y), CG_YMIN, CG_YMAX);
+         var _sa = string(a);
+-        array_push(L, " lda #spr_data/64+" + string(_si), " sta $07f8+" + _sa);
+-        array_push(L, " lda #" + string(_ac.colour), " sta $d027+" + _sa);
+-        array_push(L, " lda #" + string(_x & 255), " sta ax_lo+" + _sa);
+-        array_push(L, " lda #" + string(_x >> 8), " sta ax_hi+" + _sa);
+-        array_push(L, " lda #" + string(_y), " sta ay+" + _sa);
+-        array_push(L, " lda #" + string(clamp(_ac.speed, 1, 8)), " sta aspd+" + _sa);
++        array_push(_init, " lda #spr_data/64+" + string(_si), " sta $07f8+" + _sa);
++        array_push(_init, " lda #" + string(_ac.colour), " sta $d027+" + _sa);
++        array_push(_init, " lda #" + string(_x & 255), " sta ax_lo+" + _sa);
++        array_push(_init, " lda #" + string(_x >> 8), " sta ax_hi+" + _sa);
++        array_push(_init, " lda #" + string(_y), " sta ay+" + _sa);
++        array_push(_init, " lda #" + string(clamp(_ac.speed, 1, 8)), " sta aspd+" + _sa);
++        array_push(_init, " lda #0", " sta avy+" + _sa, " sta agr+" + _sa);
+         var _vis = 0;
+         if (_ac.visible) { _vis = 1; }
+         var _dx = 0;
+         if (_ac.start_left) { _dx = 1; }
+         var _dy = 0;
+         if (_ac.start_up) { _dy = 1; }
+-        array_push(L, " lda #" + string(_vis), " sta avis+" + _sa);
+-        array_push(L, " lda #" + string(_dx), " sta adx+" + _sa);
+-        array_push(L, " lda #" + string(_dy), " sta ady+" + _sa);
++        stage_emit_actor_vis(_init, _ac, _sa, _vis);
++        array_push(_init, " lda #" + string(_dx), " sta adx+" + _sa);
++        array_push(_init, " lda #" + string(_dy), " sta ady+" + _sa);
+     }
+-    array_push(L, " lda #" + string(_mc), " sta $d01c");
+-    array_push(L, " lda #" + string(_p.mc1), " sta $d025", " lda #" + string(_p.mc2), " sta $d026");
+-    array_push(L, " lda #0", " sta $d017", " sta $d01d", " sta $d01b");
+-    array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
+-    array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e", " lda $d01f");
++    array_push(_init, " lda #" + string(_mc), " sta $d01c");
++    array_push(_init, " lda #" + string(_p.mc1), " sta $d025", " lda #" + string(_p.mc2), " sta $d026");
++    array_push(_init, " lda #0", " sta $d017", " sta $d01d", " sta $d01b", " rts");
+     // the title bitmap (Bitmaps page) until fire is pressed - the screen's song plays meanwhile
+     var _pics = bmp_game_list(_p);
+     if (_p.pic_title >= 0 && _p.pic_title < array_length(_p.pictures)) { array_push(L, " lda #" + string(bmp_slot(_pics, _p.pic_title)), " ldx #0", " jsr pic_show", " lda $d01e", " lda $d01f"); }
+@@ -239,7 +268,8 @@ function codegen_project(_p)
+             array_push(_marks, _m0);
+         }
+     }
+-    array_push(L, "mainloop:", "wr1:", " lda $d012", " cmp #250", " bne wr1", " jsr frame", " jmp mainloop");
++    array_push(L, "mainloop:", "wr1:", " lda $d012", " cmp #250", " bne wr1", " jsr frame", " lda lvl_pend", " beq mainloop", " jmp next_level");
++    for (var ii = 0; ii < array_length(_init); ii++) { array_push(L, _init[ii]); }
+ 
+     // ---------------- per-frame update ----------------
+     array_push(L, "frame:");
+@@ -288,6 +318,7 @@ function codegen_project(_p)
+             array_push(L, " lda ay+" + s, " sec", " sbc aspd+" + s, " cmp #" + string(CG_YMIN), " bcs bv" + t, " lda #0", " sta ady+" + s, " lda #" + string(CG_YMIN));
+             array_push(L, "bv" + t + ":", " sta ay+" + s);
+         }
++        if (role_on_ground(_role)) { stage_emit_actor(L, _acts[m], m); }
+         if (_role == 4 && m != _chase_target)
+         {
+             var c = string(_chase_target);
+@@ -397,8 +428,10 @@ function codegen_project(_p)
+         {
+             var _as = string(an);
+             array_push(L, " lda ax_lo+" + _as, " sec", " sbc as_px+" + _as, " sta an_dx", " lda ax_lo+" + _as, " sta as_px+" + _as);
+-            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as, " lda #0", " sta an_air");
+-            if (_acts[an].role == 0) { array_push(L, " lda joy", " and #16"); }
++            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as);
++            if (role_on_ground(_acts[an].role)) { array_push(L, " lda agr+" + _as, " eor #1", " sta an_air"); }
++            else { array_push(L, " lda #0", " sta an_air"); }
++            if (role_is_player(_acts[an].role)) { array_push(L, " lda joy", " and #16"); }
+             array_push(L, " sta an_fire", " ldx #" + _as, " lda #" + _as, " jsr anim_upd", " tay", " lda an_mc,y", " beq amc_" + _as, " lda #" + string(1 << an), "amc_" + _as + ":", " sta an_fl", " lda $d01c", " and #" + string(255 - (1 << an)), " ora an_fl", " sta $d01c", " tya", " clc", " adc #spr_data/64", " sta $07f8+" + _as);
+             continue;
+         }
+@@ -422,6 +455,7 @@ function codegen_project(_p)
+         array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
+     }
+     array_push(L, " inx", " cpx #250", " bne cpy1");
++    if (stage_has_hills(_p, na)) { array_push(L, " jsr draw_hills"); }
+     // the UI page's custom HUD: draw_screen runs on into its panel, then its own draw_hud
+     var _hud_on = hud_emit_single(L, _p);
+     if (!_hud_on) { array_push(L, " rts"); }
+@@ -450,6 +484,22 @@ function codegen_project(_p)
+             array_push(L, " ora #48", " sta " + string(_d + dd), " lda #" + _hc, " sta " + string(_d + dd + 54272));
+         }
+     }
++    if (!_hud_on && _p.goal_on)
++    {
++        var _gb = 1024 + _row * 40 + 14;
++        var _gl = _p.goal_label + " ";
++        var _gt = cg_bcd(0);
++        for (var gc = 1; gc <= string_length(_gl); gc++)
++        {
++            array_push(L, " lda #" + string(scr_code_from_char(string_char_at(_gl, gc))), " sta " + string(_gb + gc - 1), " lda #" + _hc, " sta " + string(_gb + gc - 1 + 54272));
++        }
++        var _gd = _gb + string_length(_gl);
++        var _goal2 = string_replace_all(string_format(_p.goal, 2, 0), " ", "0");
++        array_push(L, " lda goal_got", " jsr b2d", " stx " + string(_gd), " sta " + string(_gd + 1));
++        var _rest = "/" + _goal2;
++        for (var gr = 1; gr <= 3; gr++) { array_push(L, " lda #" + string(scr_code_from_char(string_char_at(_rest, gr))), " sta " + string(_gd + 1 + gr)); }
++        for (var gk = 0; gk < 5; gk++) { array_push(L, " lda #" + _hc, " sta " + string(_gd + gk + 54272)); }
++    }
+     if (!_hud_on && _p.show_lives)
+     {
+         var _lb = 1024 + _row * 40 + 31;
+@@ -534,6 +584,7 @@ function codegen_project(_p)
+     array_push(L, "col_data:");
+     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
+     // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
++    stage_emit(L, _p, na, cg_win_lines(_p));
+     music_emit(L, _p);
+     digi_emit(L, _p);
+     patch_emit(L, _p);
+diff --git a/C64NoCode/scripts/scr_hud/scr_hud.gml b/C64NoCode/scripts/scr_hud/scr_hud.gml
+index b78dfc6..dc6d7c5 100644
+--- a/C64NoCode/scripts/scr_hud/scr_hud.gml
++++ b/C64NoCode/scripts/scr_hud/scr_hud.gml
+@@ -30,7 +30,8 @@ function hud_field_types()
+ /// Field types this kind of game has (Goal and Level belong to map games)
+ function hud_type_count(_p)
+ {
+-    return (_p.game_type == 1) ? 7 : 3;
++    if (_p.game_type == 1) { return 7; }
++    return (_p.goal_on || _p.levels_on) ? 5 : 3;
+ }
+ 
+ /// The custom HUD of a new project: off (the standard HUD is used)
+@@ -374,9 +375,10 @@ function hud_field_value(_p, _f, _sample)
+             if (_p.game_type == 1) { _lv = _sample ? clamp(_p.eng.lives, 1, 9) : 0; }
+             return string_replace_all(string_format(_lv, _d, 0), " ", "0");
+         case 3:
+-            if (!_sample) { return "00/00"; }
++            if (!_sample) { return (_p.game_type == 0) ? "00/" + string_replace_all(string_format(clamp(_p.goal, 1, 99), 2, 0), " ", "0") : "00/00"; }
+             var _need = 12;
+             if (_p.game_type == 1 && array_length(_p.levels) > 0 && _p.levels[0].need > 0) { _need = clamp(_p.levels[0].need, 1, 99); }
++            if (_p.game_type == 0) { _need = clamp(_p.goal, 1, 99); }
+             return "05/" + string_replace_all(string_format(_need, 2, 0), " ", "0");
+         case 4:
+             return string_replace_all(string_format(1, _d, 0), " ", "0");
+@@ -559,6 +561,14 @@ function hud_emit_live_single(L, _p, _lv, _addr)
+         }
+     }
+     if (_f.type == 2) { array_push(L, " lda lives", " ora #48", " sta " + string(_addr + _d - 1)); }
++    // the Levels page's goal counter (got / needed) and the level number
++    if (_f.type == 3) { array_push(L, " lda goal_got", " jsr b2d", " stx " + string(_addr), " sta " + string(_addr + 1)); }
++    if (_f.type == 4)
++    {
++        array_push(L, " lda level", " clc", " adc #1", " jsr b2d");
++        if (_d == 2) { array_push(L, " stx " + string(_addr), " sta " + string(_addr + 1)); }
++        else { array_push(L, " sta " + string(_addr)); }
++    }
+ }
+ 
+ /// The custom HUD of a single-screen game: hud_panel (the panel, after draw_screen) and
+@@ -797,6 +807,20 @@ function hud_preview_render(_x, _y, _sc)
+                 draw_sprite_part_ext(_sheet, 0, (_ch mod 16) * 8, (_ch div 16) * 8, 8, 8, _x + c * _cs, _y + r * _cs, _sc, _sc, c64col(_p.cols[_i]), 1);
+             }
+         }
++        // the Levels page: the picked level's hills over the screen
++        if (_p.levels_on && array_length(_p.stages) > 0)
++        {
++            var _hc = stage_cells(_p, _p.stages[clamp(lvl_sel, 0, array_length(_p.stages) - 1)].heights);
++            for (var k2 = 0; k2 < 1000; k2++)
++            {
++                var _hch = _hc.scr[k2];
++                if (_hch < 0) { continue; }
++                var _hx = _x + (k2 mod 40) * _cs;
++                var _hy = _y + (k2 div 40) * _cs;
++                px_rect(_hx, _hy, _cs, _cs, c64col(_bgc));
++                draw_sprite_part_ext(_sheet, 0, (_hch mod 16) * 8, (_hch div 16) * 8, 8, 8, _hx, _hy, _sc, _sc, c64col(_hc.col[k2]), 1);
++            }
++        }
+     }
+     if (_u.on)
+     {
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index 67353c9..a0e8589 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -4,14 +4,14 @@
+ 
+ function project_defs_init()
+ {
+-    global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)"];
++    global.ROLE_NAMES = ["Player (joystick)", "Bouncer (diagonal)", "Patrol left-right", "Patrol up-down", "Chaser (follows player)", "Still (does not move)", "Player on the ground", "Walker on the ground"];
+     global.WHEN_NAMES = ["Actor touches actor", "Fire button is pressed", "Every few seconds", "Score reaches", "Lives run out", "The game starts",
+                          "Actor hits the scenery"];
+     global.DO_NAMES   = ["Add to score", "Lose a life", "Play a sound", "Flash the border", "Send actor back to start",
+                          "Move actor to a random spot", "Hide actor", "Show actor", "Change actor colour",
+                          "Change background colour", "Game over", "You win!", "Speed up actor",
+                          "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds",
+-                         "Play music", "Stop music", "Show a bitmap"];
++                         "Play music", "Stop music", "Show a bitmap", "Count towards the level goal"];
+     global.TEMPLATE_NAMES = ["Player touches enemy: lose a life", "Player touches pickup: score + move pickup",
+                              "Score target: you win", "Out of lives: game over", "Every 10 seconds: speed up enemy",
+                              "Fire button: play a sound"];
+@@ -45,6 +45,7 @@ function actor_new(_name)
+         x : 172,
+         y : 140,
+         visible : true,
++        from_level : 1,
+         start_left : false,
+         start_up : false,
+         anims : anims_new(),        // the Animate page (scr_anim)
+@@ -101,7 +102,18 @@ function project_new()
+         pic_over : -1,
+         pic_win : -1,
+         // the UI page: the custom HUD
+-        hud : hud_new()
++        hud : hud_new(),
++        // the Levels page (single-screen games): levels with hills, the goal, the title
++        levels_on : false,
++        stages : [],
++        terrain_cols : [13, 5, 9, 8],
++        goal_on : false,
++        goal_label : "GEMS",
++        goal : 10,
++        title_on : false,
++        title1 : "MY GAME",
++        title2 : "PRESS FIRE TO START",
++        lev_text : "LEVEL"
+     };
+     for (var i = 0; i < 8; i++)
+     {
+@@ -390,6 +402,7 @@ function project_from_loaded(_raw)
+     _p.levels = _lvls;
+     bmp_project_fix(_p);
+     hud_project_fix(_p);
++    stages_fix(_p);
+     return _p;
+ }
+ 
+diff --git a/C64NoCode/scripts/scr_stages/scr_stages.gml b/C64NoCode/scripts/scr_stages/scr_stages.gml
+new file mode 100644
+index 0000000..09bf354
+--- /dev/null
++++ b/C64NoCode/scripts/scr_stages/scr_stages.gml
+@@ -0,0 +1,356 @@
++/// C64 ENGINE - levels for single-screen games (the Levels page, ported from ADAM's Levels page).
++/// Up to 8 levels, each with its own hills grown from a seed and shaped by hand, drawn on the
++/// C64 in block characters over the Screen page (a partly filled block on top, so the ground
++/// line is smooth to the pixel). Actors can walk on the hills, appear from a given level on,
++/// and a goal counter moves the game on to the next level - with a level card in between, a
++/// title screen in big letters before the game, and the Win message after the last level.
++/// The map games keep their own levels (Map page); these are proj.stages.
++
++#macro STAGE_MAX 8
++#macro STAGE_TOP 64          // the highest the ground can go (pixels from the top of the screen)
++#macro STAGE_LOW 196         // the lowest; 200 = no ground in that column
++
++/// The block characters that fill the bottom n eighths of a cell (n = 1..8)
++function stage_blocks()
++{
++    return [100, 111, 121, 98, 248, 247, 227, 160];
++}
++
++/// Rolling hills from a seed (ADAM's maths, sampled at the middle of each of the 40 columns
++/// and scaled to the C64's 200 lines). Returns 40 ground heights, pixels from the top.
++function stage_terrain(_seed, _hilly, _base)
++{
++    var _st = _seed & 0x7fffffff;
++    var _lo = [45, 20, 9];
++    var _hi = [70, 30, 14];
++    var _amp = [11, 5.5, 2.3];
++    var _f = [0, 0, 0];
++    var _ph = [0, 0, 0];
++    var _a = [0, 0, 0];
++    for (var k = 0; k < 3; k++)
++    {
++        _st = (_st * 1103515245 + 12345) mod 2147483648;
++        var _r1 = _st / 2147483648;
++        _st = (_st * 1103515245 + 12345) mod 2147483648;
++        var _r2 = _st / 2147483648;
++        _f[k] = 1 / (_lo[k] + _r1 * (_hi[k] - _lo[k]));
++        _ph[k] = _r2 * 6.283185307179586;
++        _a[k] = _amp[k] * _hilly / 100 * 2.5;
++    }
++    var _out = array_create(40, 200);
++    for (var c = 0; c < 40; c++)
++    {
++        var _px = c * 8 + 4;
++        var _h = _base;
++        for (var t = 0; t < 3; t++) { _h += sin(_px * _f[t] + _ph[t]) * _a[t]; }
++        _out[c] = clamp(floor(_h + 0.5), STAGE_TOP, STAGE_LOW);
++    }
++    return _out;
++}
++
++function stage_new(_seed)
++{
++    return { seed : _seed, hilly : 60, base : 160, heights : stage_terrain(_seed, 60, 160) };
++}
++
++/// The levels fields of a project (new or loaded), made safe
++function stages_fix(_p)
++{
++    if (!is_bool(_p[$ "levels_on"])) { _p.levels_on = (is_numeric(_p[$ "levels_on"]) && _p[$ "levels_on"] != 0); }
++    var _raw = _p[$ "stages"];
++    var _out = [];
++    if (is_array(_raw))
++    {
++        for (var i = 0; i < min(STAGE_MAX, array_length(_raw)); i++)
++        {
++            var _s = struct_overlay(stage_new(1000), _raw[i]);
++            _s.seed = is_numeric(_s.seed) ? clamp(floor(_s.seed), 1, 99999) : 1000;
++            _s.hilly = is_numeric(_s.hilly) ? clamp(floor(_s.hilly), 0, 150) : 60;
++            _s.base = is_numeric(_s.base) ? clamp(floor(_s.base), 100, 190) : 160;
++            if (!is_array(_s.heights) || array_length(_s.heights) != 40) { _s.heights = stage_terrain(_s.seed, _s.hilly, _s.base); }
++            for (var c = 0; c < 40; c++) { _s.heights[c] = is_numeric(_s.heights[c]) ? clamp(floor(_s.heights[c]), STAGE_TOP, 200) : 200; }
++            array_push(_out, _s);
++        }
++    }
++    _p.stages = _out;
++    var _tc = _p[$ "terrain_cols"];
++    if (!is_array(_tc) || array_length(_tc) != 4) { _tc = [13, 5, 9, 8]; }
++    for (var k = 0; k < 4; k++) { _tc[k] = is_numeric(_tc[k]) ? clamp(floor(_tc[k]), 0, 15) : 0; }
++    _p.terrain_cols = _tc;
++    if (!is_bool(_p[$ "goal_on"])) { _p.goal_on = (is_numeric(_p[$ "goal_on"]) && _p[$ "goal_on"] != 0); }
++    _p.goal_label = is_string(_p[$ "goal_label"]) ? string_upper(string_copy(_p.goal_label, 1, 6)) : "GEMS";
++    _p.goal = is_numeric(_p[$ "goal"]) ? clamp(floor(_p.goal), 1, 99) : 10;
++    if (!is_bool(_p[$ "title_on"])) { _p.title_on = (is_numeric(_p[$ "title_on"]) && _p[$ "title_on"] != 0); }
++    _p.title1 = is_string(_p[$ "title1"]) ? string_upper(string_copy(_p.title1, 1, 10)) : "MY GAME";
++    _p.title2 = is_string(_p[$ "title2"]) ? string_upper(string_copy(_p.title2, 1, 40)) : "PRESS FIRE TO START";
++    _p.lev_text = is_string(_p[$ "lev_text"]) ? string_upper(string_copy(_p.lev_text, 1, 10)) : "LEVEL";
++    if (is_array(_p[$ "actors"]))
++    {
++        for (var a = 0; a < array_length(_p.actors); a++)
++        {
++            var _ac = _p.actors[a];
++            _ac.from_level = is_numeric(_ac[$ "from_level"]) ? clamp(floor(_ac.from_level), 1, STAGE_MAX) : 1;
++        }
++    }
++}
++
++/// How many levels the single-screen game plays
++function stage_count(_p)
++{
++    if (!_p.levels_on) { return 1; }
++    return clamp(array_length(_p.stages), 1, STAGE_MAX);
++}
++
++/// Is the actor role a ground walker (player on the ground, walker)?
++function role_on_ground(_role)
++{
++    return (_role == 6 || _role == 7);
++}
++
++/// Is the role a player (the joystick moves it)?
++function role_is_player(_role)
++{
++    return (_role == 0 || _role == 6);
++}
++
++/// The hills of level _h (40 heights) as cells over the screen: { scr[1000], col[1000] } (-1 = none).
++/// The same rules as draw_hills in the game.
++function stage_cells(_p, _h)
++{
++    var _scr = array_create(1000, -1);
++    var _col = array_create(1000, 0);
++    var _bl = stage_blocks();
++    var _tc = _p.terrain_cols;
++    for (var c = 0; c < 40; c++)
++    {
++        var _g = _h[c];
++        if (_g >= 200) { continue; }
++        var _r0 = _g div 8;
++        for (var r = _r0; r < 25; r++)
++        {
++            var _d = r - _r0;
++            var _i = r * 40 + c;
++            if (_d == 0)
++            {
++                _scr[_i] = _bl[7 - (_g mod 8)];
++                _col[_i] = _tc[0];
++            }
++            else
++            {
++                _scr[_i] = 160;
++                if (_d == 1) { _col[_i] = _tc[1]; }
++                else { _col[_i] = (((c * 5 + r * 3) & 15) == 0) ? _tc[3] : _tc[2]; }
++            }
++        }
++    }
++    return { scr : _scr, col : _col };
++}
++
++/// The lowest drawn row of a sprite (its feet)
++function sprite_feet(_si)
++{
++    var _s = proj.sprites[clamp(_si, 0, SPR_COUNT - 1)];
++    if (_s.mc)
++    {
++        for (var q = 251; q >= 0; q--)
++        {
++            if (_s.mcp[q] != 0) { return q div 12; }
++        }
++    }
++    else
++    {
++        for (var q2 = 503; q2 >= 0; q2--)
++        {
++            if (_s.hi[q2] != 0) { return q2 div 24; }
++        }
++    }
++    return 20;
++}
++
++// ---------------------------------------------------------------------------
++// In the game
++// ---------------------------------------------------------------------------
++
++/// The C64 letters of the title in big letters: each pixel of a letter becomes a quarter of a
++/// character (the C64's own quarter-block characters), so a letter is 4 x 4 characters.
++/// Returns 160 screen codes (4 rows of 40).
++function stage_title_cells(_text)
++{
++    var _q = [32, 108, 123, 98, 124, 225, 255, 254, 126, 127, 97, 252, 226, 251, 236, 160];
++    var _out = array_create(160, 32);
++    var _t = string_upper(string_copy(_text, 1, 10));
++    var _n = string_length(_t);
++    var _x0 = (40 - _n * 4) div 2;
++    for (var i = 0; i < _n; i++)
++    {
++        var _code = scr_code_from_char(string_char_at(_t, i + 1)) & 63;
++        for (var cy = 0; cy < 4; cy++)
++        {
++            for (var cx = 0; cx < 4; cx++)
++            {
++                var _top = global.chargen_rom[_code * 8 + cy * 2];
++                var _bot = global.chargen_rom[_code * 8 + cy * 2 + 1];
++                var _m1 = 0x80 >> (cx * 2);
++                var _m2 = 0x40 >> (cx * 2);
++                var _v = (((_top & _m1) != 0) ? 8 : 0) | (((_top & _m2) != 0) ? 4 : 0) | (((_bot & _m1) != 0) ? 2 : 0) | (((_bot & _m2) != 0) ? 1 : 0);
++                _out[cy * 40 + _x0 + i * 4 + cx] = _q[_v];
++            }
++        }
++    }
++    return _out;
++}
++
++/// 40 screen codes of a line of text, centred
++function stage_line_cells(_text)
++{
++    var _out = array_create(40, 32);
++    var _t = string_upper(string_copy(_text, 1, 40));
++    var _x0 = (40 - string_length(_t)) div 2;
++    for (var i = 0; i < string_length(_t); i++) { _out[_x0 + i] = scr_code_from_char(string_char_at(_t, i + 1)); }
++    return _out;
++}
++
++/// The actors' start for this level: as the Actors page says, shown from their level on
++/// (one subroutine, run at the start and at each new level)
++function stage_emit_actor_vis(L, _ac, _sa, _vis)
++{
++    array_push(L, " lda #" + string(_vis));
++    var _from = clamp(_ac.from_level, 1, STAGE_MAX);
++    if (_vis && _from > 1) { array_push(L, " ldy level", " cpy #" + string(_from - 1), " bcs av_" + _sa, " lda #0", "av_" + _sa + ":"); }
++    array_push(L, " sta avis+" + _sa);
++}
++
++/// Everything the levels need in a single-screen game: the hills, walking on them, the level
++/// card, the title screen and moving on. na = actors in the game.
++function stage_emit(L, _p, na, _win_lines)
++{
++    var _acts = _p.actors;
++    var _nl = stage_count(_p);
++    var _ground = false;
++    for (var a = 0; a < na; a++)
++    {
++        if (role_on_ground(_acts[a].role)) { _ground = true; }
++    }
++    // the levels' ground: 40 heights each (200 = no ground)
++    array_push(L, "; ---------------- levels (Levels page) ----------------");
++    if (_p.levels_on)
++    {
++        var _lo = [];
++        var _hi = [];
++        for (var l = 0; l < _nl; l++)
++        {
++            array_push(L, "hl_" + string(l) + ":");
++            eng_emit_bytes(L, _p.stages[l].heights);
++            array_push(_lo, "<hl_" + string(l));
++            array_push(_hi, ">hl_" + string(l));
++        }
++        array_push(L, "hl_lo:", " .byte " + string_join_ext(",", _lo), "hl_hi:", " .byte " + string_join_ext(",", _hi));
++        var _bl = stage_blocks();
++        var _part = [];
++        for (var k = 0; k < 8; k++) { array_push(_part, _bl[7 - k]); }
++        array_push(L, "hl_part:", " .byte " + string_join_ext(",", _part));
++        var _rl = [];
++        var _rh = [];
++        for (var r = 0; r < 25; r++)
++        {
++            array_push(_rl, string((1024 + r * 40) & 255));
++            array_push(_rh, string((1024 + r * 40) >> 8));
++        }
++        array_push(L, "row_lo:", " .byte " + string_join_ext(",", _rl), "row_hi:", " .byte " + string_join_ext(",", _rh));
++        var _tc = _p.terrain_cols;
++        // draw_hills: each column's top cell is a partly filled block in the edge colour, then
++        // a grass cell, then soil (with specks); the ground lines go into gnd for the walkers
++        array_push(L, "draw_hills:", " ldx level", " lda hl_lo,x", " sta ptr", " lda hl_hi,x", " sta ptr+1", " ldy #0");
++        array_push(L, "dh_col:", " sty hcol", " lda (ptr),y", " clc", " adc #50", " sta gnd,y", " lda (ptr),y", " cmp #200", " bcc dh_go", " jmp dh_next", "dh_go:");
++        array_push(L, " pha", " lsr", " lsr", " lsr", " sta hrow", " pla", " and #7", " tax", " lda hl_part,x", " sta hch", " lda #0", " sta hdep");
++        array_push(L, "dh_row:", " ldx hrow", " lda row_lo,x", " sta $fd", " lda row_hi,x", " sta $fe", " ldy hcol", " lda hch", " sta ($fd),y");
++        array_push(L, " lda hdep", " bne dh_c1", " lda #" + string(_tc[0]), " jmp dh_cs", "dh_c1:", " cmp #1", " bne dh_c2", " lda #" + string(_tc[1]), " jmp dh_cs");
++        array_push(L, "dh_c2:", " lda hcol", " asl", " asl", " clc", " adc hcol", " sta hcl", " lda hrow", " asl", " clc", " adc hrow", " adc hcl", " and #15", " bne dh_c3", " lda #" + string(_tc[3]), " jmp dh_cs", "dh_c3:", " lda #" + string(_tc[2]));
++        array_push(L, "dh_cs:", " pha", " lda $fe", " clc", " adc #$d4", " sta $fe", " pla", " sta ($fd),y");
++        array_push(L, " lda #160", " sta hch", " inc hdep", " inc hrow", " lda hrow", " cmp #25", " bcs dh_next", " jmp dh_row");
++        array_push(L, "dh_next:", " ldy hcol", " iny", " cpy #40", " beq dh_done", " jmp dh_col", "dh_done:", " rts");
++    }
++    else if (_ground)
++    {
++        // no hills: the ground is the bottom of the screen
++        array_push(L, "draw_hills:", " ldy #39", " lda #250", "dh0:", " sta gnd,y", " dey", " bpl dh0", " rts");
++    }
++    array_push(L, "gnd:", " .fill 40,250");
++
++    if (_ground)
++    {
++        // where each actor's feet are (the sprite's lowest row + 1)
++        var _fb = [];
++        for (var f = 0; f < 8; f++) { array_push(_fb, (f < na) ? sprite_feet(_acts[f].sprite) + 1 : 21); }
++        array_push(L, "afb:", " .byte " + string_join_ext(",", _fb));
++        // gnd_at: X = actor -> A = the ground line under its middle (sprite y), Y = its column
++        array_push(L, "gnd_at:", " lda ax_lo,x", " sec", " sbc #12", " sta tmp3", " lda ax_hi,x", " sbc #0", " lsr", " lda tmp3", " ror", " lsr", " lsr", " cmp #40", " bcc ga1", " lda #39", "ga1:", " tay", " lda gnd,y", " rts");
++        // ground_fall: X = actor - gravity, and standing on the ground
++        array_push(L, "ground_fall:", " lda acnt", " and #1", " bne gf1", " lda avy,x", " bmi gf0", " cmp #6", " bcs gf1", "gf0:", " inc avy,x", "gf1:");
++        array_push(L, " lda ay,x", " clc", " adc avy,x", " sta ay,x", " cmp #" + string(CG_YMIN), " bcs gf2", " lda #" + string(CG_YMIN), " sta ay,x", " lda #0", " sta avy,x");
++        array_push(L, "gf2:", " jsr gnd_at", " sec", " sbc afb,x", " sta tmp3", " lda avy,x", " bmi gf_r", " lda ay,x", " cmp tmp3", " bcc gf_air");
++        array_push(L, " lda tmp3", " sta ay,x", " lda #0", " sta avy,x", " lda #1", " sta agr,x", " rts", "gf_air:", " lda #0", " sta agr,x", "gf_r:", " rts");
++        // ground_step: X = actor, A = signed pixels across - stopped by the screen edges and by
++        // ground more than 8 pixels above its feet. A = 0 moved, 1 blocked.
++        array_push(L, "ground_step:", " sta tmp4", " lda ax_lo,x", " sta tmp5", " lda ax_hi,x", " sta tmp6", " lda tmp4", " bmi gs_n");
++        array_push(L, " clc", " adc ax_lo,x", " sta ax_lo,x", " bcc gs1", " inc ax_hi,x", " jmp gs1", "gs_n:", " clc", " adc ax_lo,x", " sta ax_lo,x", " bcs gs1", " dec ax_hi,x");
++        array_push(L, "gs1:", " lda ax_hi,x", " bne gs_h", " lda ax_lo,x", " cmp #" + string(CG_XMIN), " bcc gs_b", " jmp gs_c", "gs_h:", " lda ax_lo,x", " cmp #" + string((CG_XMAX & 255) + 1), " bcs gs_b");
++        array_push(L, "gs_c:", " jsr gnd_at", " sec", " sbc afb,x", " sta tmp3", " lda ay,x", " sec", " sbc tmp3", " bcc gs_ok", " cmp #9", " bcs gs_b", "gs_ok:", " lda #0", " rts");
++        array_push(L, "gs_b:", " lda tmp5", " sta ax_lo,x", " lda tmp6", " sta ax_hi,x", " lda #1", " rts");
++    }
++
++    // wait_fire: fire let go, pressed, let go
++    array_push(L, "wait_fire:", "wf1:", " lda $dc00", " and #16", " beq wf1", "wf2:", " lda $dc00", " and #16", " bne wf2", "wf3:", " lda $dc00", " and #16", " beq wf3", " rts");
++    array_push(L, "clear_scr:", " lda #0", " sta $d015", " ldx #0", " lda #32", "cs1:", " sta $0400,x", " sta $0500,x", " sta $0600,x", " sta $06e8,x", " inx", " bne cs1", " rts");
++    // b2d: A (0-99) -> X tens and A units, as screen codes
++    array_push(L, "b2d:", " ldx #48", "b2d1:", " cmp #10", " bcc b2d2", " sbc #10", " inx", " bne b2d1", "b2d2:", " ora #48", " rts");
++
++    // level_begin: the screen (with this level's hills), the actors, the level's song
++    array_push(L, "level_begin:", " lda #0", " sta $d015", " sta goal_got", " sta lvl_pend", " jsr draw_screen", " jsr actors_init", " lda level", " jsr mus_level");
++    array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e", " lda $d01f", " rts");
++    // next_level: after the last level the game is won, otherwise a level card and the next one
++    array_push(L, "next_level:", " lda #0", " sta lvl_pend", " lda level", " cmp #" + string(_nl - 1), " bcc nl1");
++    for (var w = 0; w < array_length(_win_lines); w++) { array_push(L, _win_lines[w]); }
++    array_push(L, "nl1:", " inc level", " jsr sfx_stop", " jsr clear_scr");
++    var _card = stage_line_cells(_p.lev_text + " 0");
++    array_push(L, " ldx #39", "lc1:", " lda lc_txt,x", " sta $0400+480,x", " lda #1", " sta $d800+480,x", " dex", " bpl lc1");
++    var _digit = 0;
++    for (var dc = 39; dc >= 0; dc--)
++    {
++        if (_card[dc] != 32) { _digit = dc; break; }
++    }
++    array_push(L, " lda level", " clc", " adc #49", " sta $0400+480+" + string(_digit), " jsr wait_fire", " jsr level_begin", " jmp mainloop");
++    array_push(L, "lc_txt:");
++    eng_emit_bytes(L, _card);
++    // the title screen: the title in big letters and a line under it, until fire
++    if (_p.title_on)
++    {
++        array_push(L, "title_screen:", " jsr clear_scr", " ldx #159", "ts1:", " lda tt_big,x", " sta $0400+240,x", " lda #1", " sta $d800+240,x", " dex", " cpx #255", " bne ts1");
++        array_push(L, " ldx #39", "ts2:", " lda tt_sub,x", " sta $0400+600,x", " lda #7", " sta $d800+600,x", " dex", " bpl ts2", " jmp wait_fire");
++        array_push(L, "tt_big:");
++        eng_emit_bytes(L, stage_title_cells(_p.title1));
++        array_push(L, "tt_sub:");
++        eng_emit_bytes(L, stage_line_cells(_p.title2));
++    }
++}
++
++/// The code that moves a ground actor m (role 6: the player on the ground, 7: a walker)
++function stage_emit_actor(L, _ac, m)
++{
++    var s = string(m);
++    var t = "_" + s;
++    if (_ac.role == 6)
++    {
++        array_push(L, " ldx #" + s, " lda joy", " and #4", " beq gl" + t, " lda #0", " sec", " sbc aspd+" + s, " jsr ground_step", "gl" + t + ":");
++        array_push(L, " ldx #" + s, " lda joy", " and #8", " beq gr" + t, " lda aspd+" + s, " jsr ground_step", "gr" + t + ":");
++        // fire or up jumps, from the ground
++        array_push(L, " lda joy", " and #17", " beq gj" + t, " lda agr+" + s, " beq gj" + t, " lda #250", " sta avy+" + s, " lda #0", " sta agr+" + s, "gj" + t + ":");
++        array_push(L, " ldx #" + s, " jsr ground_fall");
++    }
++    if (_ac.role == 7)
++    {
++        array_push(L, " ldx #" + s, " lda adx+" + s, " bne wl" + t, " lda aspd+" + s, " jsr ground_step", " beq wd" + t, " lda #1", " sta adx+" + s, " jmp wd" + t);
++        array_push(L, "wl" + t + ":", " lda #0", " sec", " sbc aspd+" + s, " jsr ground_step", " beq wd" + t, " lda #0", " sta adx+" + s);
++        array_push(L, "wd" + t + ":", " ldx #" + s, " jsr ground_fall");
++    }
++}
+diff --git a/C64NoCode/scripts/scr_stages/scr_stages.yy b/C64NoCode/scripts/scr_stages/scr_stages.yy
+new file mode 100644
+index 0000000..f0ca173
+--- /dev/null
++++ b/C64NoCode/scripts/scr_stages/scr_stages.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_stages",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_stages",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index ca592e9..a2bb4ca 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -78,6 +78,11 @@ function tut_init()
+         tut_step(WS_UI, "hud_preview", "Move things", "Drag a field on the preview to move it - it snaps to the 8 x 8 character grid, as the C64 draws letters in character squares."),
+         tut_step(WS_UI, "hud_frame_canvas", "Draw the frame", "The 3 x 3 characters are the corners, the edges that repeat along the panel and the fill. Each character has one colour, just like on the C64."),
+         tut_step(WS_UI, "hud_add", "Fields", "Add text, the score, lives - and in a map game the level goal and the level number. Pick one to change its label, place, colour and digits on the right."),
++        tut_step(WS_LEVELS, "", "Levels", "Up to 8 levels for a single-screen game. Each has its own hills drawn over your Screen page, for actors to walk on."),
++        tut_step(WS_LEVELS, "lvl_on", "Switch them on", "Levels and hills gives you level 1. Add level makes the next one, a little hillier."),
++        tut_step(WS_LEVELS, "lvl_canvas", "Shape the ground", "Drag on the screen to draw where the ground is; right-drag smooths it. Generate on the right grows fresh hills from the seed."),
++        tut_step(WS_LEVELS, "lvl_goal_on", "The level goal", "A counter like GEMS 00/10. The Logic action 'Count towards the level goal' adds one - reach the target and the next level begins."),
++        tut_step(WS_LEVELS, "lvl_title_on", "Title and level card", "A title in big letters before the game, and a card with LEVEL 2, LEVEL 3... between levels."),
+         tut_step(WS_ANIMATE, "", "Animate", "Animations for your cast, played by a small routine in the game that watches which way each sprite moves. Pick someone on the left."),
+         tut_step(WS_ANIMATE, "anim_mid_0", "The joystick", "The middle plays while it stands still, the 8 slots round it while it moves that way. Leave directions empty and they borrow from Walk or from each other."),
+         tut_step(WS_ANIMATE, "anim_bank_0", "Pick the frames", "Click a frame slot, then sprites in the bank - each click adds a frame. Double-click a sprite to draw it."),
+diff --git a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+index 6089a22..2d3a1ff 100644
+--- a/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
++++ b/C64NoCode/scripts/scr_ws_actors/scr_ws_actors.gml
+@@ -214,17 +214,25 @@ function ws_actors_draw(_x1, _y1, _x2, _y2)
+         "Moves left and right, turning around at the screen edges.",
+         "Moves up and down, turning around at the top and bottom.",
+         "Always heads towards the player. Speed 1 is gentle, 3 is scary!",
+-        "Stays where you put it. Great for pickups, doors and goals."
++        "Stays where you put it. Great for pickups, doors and goals.",
++        "Walks on the ground (Levels page hills, or the bottom of the screen): left and right move, fire or up jumps.",
++        "Walks along the ground by itself, turning round at walls and at the edges of the screen."
+     ];
+     ui_rrect(_fx2, _y, _fx2 + _fw2, _y + 50, 8, global.TH.inset_top, global.TH.inset_bot, 0.8);
+-    ui_text_wrap(_fx2 + 10, _y + 7, _rdesc[clamp(_s.role, 0, 5)], global.TH.text_dim, _fw2 - 20, global.f_small, 1);
++    ui_text_wrap(_fx2 + 10, _y + 7, _rdesc[clamp(_s.role, 0, 7)], global.TH.text_dim, _fw2 - 20, global.f_small, 1);
+     _y += 62;
+     ui_heading(_fx2, _y, "Speed");
+     set_val(_s, "speed", ui_stepper("act_speed", _fx2, _y + 18, _half, _s.speed, 1, 8, "Speed|Pixels moved every frame (50 frames per second). 1 is slow, 8 is very fast."), "actspeed");
+     ui_heading(_fx2 + _half + 12, _y, "Visible at start");
+     set_val(_s, "visible", ui_toggle("act_vis", _fx2 + _half + 12, _y + 22, "Shown", _s.visible, "Visible at start|Hidden actors can be shown later with the 'Show actor' action in Logic."), "actvis");
+     _y += 62;
+-    if (_s.role == 1 || _s.role == 2)
++    if (proj.levels_on && array_length(proj.stages) > 1)
++    {
++        ui_heading(_fx2, _y, "Appears from level");
++        set_val(_s, "from_level", ui_stepper("act_from", _fx2, _y + 18, _half, clamp(_s.from_level, 1, array_length(proj.stages)), 1, array_length(proj.stages), "Appears from level|This actor joins the game on this level and stays for the rest (Levels page). 1 = from the start."), "actfrom");
++        _y += 62;
++    }
++    if (_s.role == 1 || _s.role == 2 || _s.role == 7)
+     {
+         set_val(_s, "start_left", ui_toggle("act_left", _fx2, _y, "Starts moving left", _s.start_left, "Start direction|Whether this actor starts heading left instead of right."), "actleft");
+         _y += 32;
+diff --git a/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.gml b/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.gml
+new file mode 100644
+index 0000000..5030b5a
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.gml
+@@ -0,0 +1,256 @@
++/// C64 ENGINE - the Levels page (single-screen games, ported from ADAM's Levels page).
++/// Left: switch levels on, the levels with a picture of their hills, Add / Remove.
++/// Centre: the screen with the picked level's hills and its actors; drag to draw the ground,
++/// right-drag to smooth it. Right: the seed and how the hills grow, the level's music, the hill
++/// colours, the level goal and the screens (title, level card). The 6502 side is in scr_stages.
++
++function ws_levels_draw(_x1, _y1, _x2, _y2)
++{
++    var _lw = 230;
++    var _rw = 340;
++    var _nl = array_length(proj.stages);
++
++    // ---------------- the levels ----------------
++    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Levels (" + string(_nl) + " / " + string(STAGE_MAX) + ")");
++    var _on = ui_toggle("lvl_on", _x1 + 16, _y1 + 54, "Levels and hills", proj.levels_on, "Levels|Turn on to make a game of up to 8 levels. Each level has its own hills, grown from a seed and shaped by hand, drawn over your Screen page. Reaching the level goal moves on to the next level.");
++    if (_on != proj.levels_on)
++    {
++        undo_mark("lvlon" + string(current_time));
++        proj.levels_on = _on;
++        if (_on && array_length(proj.stages) == 0) { array_push(proj.stages, stage_new(1000)); }
++        _nl = array_length(proj.stages);
++    }
++    var _ly = _y1 + 92;
++    var _tc = proj.terrain_cols;
++    for (var i = 0; i < _nl; i++)
++    {
++        var _ry = _ly + i * 44;
++        if (_ry + 38 > _y2 - 96) { break; }
++        var _id = "lvl_slot_" + string(i);
++        var _hot = ui_register(_id, _x1 + 10, _ry, _x1 + _lw - 10, _ry + 38, "Level " + string(i + 1) + "|Click to edit this level's hills.");
++        if (lvl_sel == i) { ui_rrect(_x1 + 10, _ry, _x1 + _lw - 10, _ry + 38, 9, global.TH.accent, global.TH.accent_dark, 0.9); }
++        else if (_hot) { ui_rrect(_x1 + 10, _ry, _x1 + _lw - 10, _ry + 38, 9, global.TH.btn_hot_top, global.TH.btn_hot_bot, 0.8); }
++        // a little picture of the hills
++        var _hh = proj.stages[i].heights;
++        px_rect(_x1 + 18, _ry + 5, 80, 28, c64col(proj.background));
++        for (var t = 0; t < 40; t++)
++        {
++            if (_hh[t] >= 200) { continue; }
++            var _hy = (_hh[t] / 200) * 28;
++            px_rect(_x1 + 18 + t * 2, _ry + 5 + _hy, 2, 28 - _hy, c64col(_tc[1]));
++        }
++        ui_text(_x1 + 108, _ry + 12, "Level " + string(i + 1), global.TH.text, fa_left, fa_middle, global.f_bold, 1);
++        var _en = 0;
++        for (var a = 0; a < min(8, array_length(proj.actors)); a++)
++        {
++            if (proj.actors[a].from_level <= i + 1) { _en += 1; }
++        }
++        ui_text(_x1 + 108, _ry + 28, (_en == 1) ? "1 actor" : string(_en) + " actors", (lvl_sel == i) ? global.TH.text : global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
++        if (_hot && ui_pressed)
++        {
++            lvl_sel = i;
++            ui_take_click();
++        }
++    }
++    lvl_sel = clamp(lvl_sel, 0, max(0, _nl - 1));
++    var _by = _y2 - 88;
++    var _bw = _lw - 32;
++    if (ui_button("lvl_add", _x1 + 16, _by, _bw, 34, "Add level", "Add level|Adds a level after the last one, with new hills from the next seed (a little hillier).", (_nl >= STAGE_MAX) ? BTN_GHOST : BTN_ACCENT))
++    {
++        if (_nl < STAGE_MAX)
++        {
++            undo_mark("lvladd" + string(current_time));
++            var _new = stage_new(1000 + _nl * 37);
++            if (_nl > 0)
++            {
++                _new.hilly = min(150, proj.stages[_nl - 1].hilly + 8);
++                _new.base = proj.stages[_nl - 1].base;
++                _new.heights = stage_terrain(_new.seed, _new.hilly, _new.base);
++            }
++            array_push(proj.stages, _new);
++            proj.levels_on = true;
++            lvl_sel = _nl;
++        }
++        else { toast(string(STAGE_MAX) + " levels is the most", 1); }
++    }
++    if (ui_button("lvl_del", _x1 + 16, _by + 42, _bw, 34, "Remove level", "Remove level|Deletes the picked level. You can Undo this.", BTN_DANGER))
++    {
++        if (_nl > 1)
++        {
++            undo_mark("lvldel" + string(current_time));
++            array_delete(proj.stages, lvl_sel, 1);
++            lvl_sel = max(0, lvl_sel - 1);
++        }
++        else { toast("Keep at least one level - or switch levels off", 1); }
++    }
++
++    // ---------------- the screen with the hills ----------------
++    var _cx1 = _x1 + _lw + 12;
++    var _cx2 = _x2 - _rw - 12;
++    ui_panel(_cx1, _y1, _cx2, _y2, "");
++    var _sc = max(1, floor(min((_cx2 - _cx1 - 32) / 320, (_y2 - _y1 - 80) / 200) * 2) / 2);
++    var _fw = 320 * _sc;
++    var _fh = 200 * _sc;
++    var _fx = floor((_cx1 + _cx2 - _fw) / 2);
++    var _fy = floor((_y1 + _y2 - _fh) / 2) - 10;
++    ui_rrect(_fx - 10, _fy - 10, _fx + _fw + 10, _fy + _fh + 10, 8, c64col(proj.border), c64col(proj.border), 1);
++    hud_preview_draw(_fx, _fy, _sc);
++    // the actors on this level, the walkers standing on the ground
++    var _gh = undefined;
++    if (proj.levels_on && _nl > 0) { _gh = proj.stages[lvl_sel].heights; }
++    for (var d = min(8, array_length(proj.actors)) - 1; d >= 0; d--)
++    {
++        var _ac = proj.actors[d];
++        if (proj.levels_on && _ac.from_level > lvl_sel + 1) { continue; }
++        var _ax = clamp(_ac.x, CG_XMIN, CG_XMAX) - 24;
++        var _ay = clamp(_ac.y, CG_YMIN, CG_YMAX) - 50;
++        if (role_on_ground(_ac.role))
++        {
++            var _col = clamp((_ax + 12) div 8, 0, 39);
++            var _g = is_undefined(_gh) ? 200 : min(200, _gh[_col]);
++            _ay = _g - sprite_feet(_ac.sprite) - 1;
++        }
++        draw_sprite_c64(clamp(_ac.sprite, 0, SPR_COUNT - 1), _fx + _ax * _sc, _fy + _ay * _sc, _sc, _ac.colour, _ac.visible ? 1 : 0.4);
++    }
++    if (!proj.levels_on || _nl == 0)
++    {
++        ui_text_wrap(_fx + 20, _fy + 20, "Turn on 'Levels and hills' to give your game up to 8 levels, each with its own ground to walk on.", c_white, _fw - 40, global.f_body, 1);
++        levels_side_panel(_x2 - _rw, _y1, _x2, _y2);
++        return;
++    }
++    var _lev = proj.stages[lvl_sel];
++    // shape the ground by drawing the hill line
++    var _hot2 = ui_register("lvl_canvas", _fx, _fy, _fx + _fw, _fy + _fh, "Shape the hills|Drag with the left button to draw where the ground is. Right-drag smooths it. Generate on the right makes fresh hills from the seed.");
++    if (_hot2 && (ui_pressed || ui_rpressed))
++    {
++        undo_mark("lvldraw" + string(current_time));
++        lvl_drawing = true;
++        lvl_last_x = -1;
++        ui_take_click();
++    }
++    if (lvl_drawing)
++    {
++        if (ui_held || ui_rheld)
++        {
++            var _mx = clamp(floor((ui_mx - _fx) / _sc / 8), 0, 39);
++            var _my = clamp(floor((ui_my - _fy) / _sc), STAGE_TOP, STAGE_LOW);
++            var _a0 = (lvl_last_x >= 0) ? min(_mx, lvl_last_x) : _mx;
++            var _b0 = (lvl_last_x >= 0) ? max(_mx, lvl_last_x) : _mx;
++            for (var c = max(0, _a0 - 1); c <= min(39, _b0 + 1); c++)
++            {
++                if (ui_held)
++                {
++                    var _t = 1;
++                    if (c < _a0 || c > _b0) { _t = 0.5; }
++                    _lev.heights[c] = round(lerp(min(_lev.heights[c], STAGE_LOW), _my, _t));
++                }
++                else
++                {
++                    var _l = _lev.heights[max(0, c - 1)];
++                    var _r = _lev.heights[min(39, c + 1)];
++                    _lev.heights[c] = round((_l + _lev.heights[c] * 2 + _r) / 4);
++                }
++            }
++            lvl_last_x = _mx;
++            proj_dirty = true;
++        }
++        else { lvl_drawing = false; }
++    }
++    ui_text((_cx1 + _cx2) / 2, _fy + _fh + 26, "Level " + string(lvl_sel + 1) + "  -  drag to draw the ground, right-drag to smooth it", global.TH.text_faint, fa_center, fa_middle, global.f_small, 1);
++
++    levels_side_panel(_x2 - _rw, _y1, _x2, _y2);
++}
++
++function levels_side_panel(_px, _y1, _x2, _y2)
++{
++    ui_panel(_px, _y1, _x2, _y2, "Level settings");
++    var _fx = _px + 20;
++    var _fw = _x2 - _px - 40;
++    var _half = floor((_fw - 12) / 2);
++    var _y = _y1 + 56;
++    var _nl = array_length(proj.stages);
++    var _endnote = "After the last level the Win message (Home page) shows - or the You win bitmap (Bitmaps page).";
++    draw_set_font(global.f_small);
++    var _content = 10 + 174 + 116 + 226 + ceil(ui_sh_ext(_endnote, _fw)) + 12;
++    if (proj.levels_on && _nl > 0) { _content += 256; }
++    var _off = ui_scroll_begin("lvl_side", _px + 4, _y1 + 46, _x2 - 4, _y2 - 6, _content);
++    _y -= _off;
++    if (proj.levels_on && _nl > 0)
++    {
++        var _lev = proj.stages[lvl_sel];
++        ui_heading(_fx, _y, "Level " + string(lvl_sel + 1) + " hills");
++        _y += 20;
++        ui_heading(_fx, _y, "Seed");
++        var _ns = ui_stepper("lvl_seed", _fx, _y + 18, _half, _lev.seed, 1, 99999, "Seed|The number the hills grow from. The same seed always gives the same hills. Change it, then press Generate.");
++        if (_ns != _lev.seed)
++        {
++            undo_mark("lvlseed");
++            _lev.seed = _ns;
++        }
++        if (ui_button("lvl_gen", _fx + _half + 12, _y + 18, _half, 30, "Generate", "Generate hills|Replaces this level's ground with fresh hills from the seed, hilliness and height. You can then reshape them by drawing.", BTN_ACCENT))
++        {
++            undo_mark("lvlgen" + string(current_time));
++            _lev.heights = stage_terrain(_lev.seed, _lev.hilly, _lev.base);
++        }
++        _y += 60;
++        ui_heading(_fx, _y, "Hilliness  " + string(_lev.hilly) + "%");
++        set_val(_lev, "hilly", round(ui_slider("lvl_hilly", _fx, _y + 18, _fw, _lev.hilly, 0, 150, "Hilliness|How steep and tall the hills are when you press Generate.")), "lvlhilly");
++        _y += 52;
++        ui_heading(_fx, _y, "Ground height  " + string(200 - _lev.base));
++        set_val(_lev, "base", round(ui_slider("lvl_base", _fx, _y + 18, _fw, 290 - _lev.base, 100, 190, "Ground height|Where the middle of the hills sits when you press Generate.")) * -1 + 290, "lvlbase");
++        _y += 62;
++        ui_heading(_fx, _y, "Level " + string(lvl_sel + 1) + " music");
++        var _mopts = music_song_options();
++        var _mcur = clamp(proj.level_song[lvl_sel] + 1, 0, array_length(_mopts) - 1);
++        var _mnew = ui_dropdown("lvl_music", _fx, _y + 18, _fw, 30, _mopts, _mcur, "Level music|The song that starts when this level begins (the same song as the level before carries on). Make songs on the Music page.");
++        if (_mnew != _mcur)
++        {
++            undo_mark("lvlmusic");
++            proj.level_song[lvl_sel] = _mnew - 1;
++        }
++        _y += 62;
++    }
++
++    ui_heading(_fx, _y, "Hill colours (all levels)");
++    _y += 18;
++    var _tn = ["Edge", "Grass", "Soil", "Specks"];
++    var _th = ["Edge colour|The top of the ground: a block filled to the exact line you drew.", "Grass colour|The row under the edge.", "Soil colour|Everything below the grass.", "Speck colour|Stones scattered through the soil."];
++    for (var k = 0; k < 4; k++)
++    {
++        var _cy = _y + k * 38;
++        ui_text(_fx, _cy + 15, _tn[k], global.TH.text_faint, fa_left, fa_middle, global.f_small, 1);
++        var _nc = ui_colour_drop("lvl_col_" + string(k), _fx + 64, _cy, _fw - 64, 30, proj.terrain_cols[k], _th[k]);
++        if (_nc != proj.terrain_cols[k])
++        {
++            undo_mark("lvlcol" + string(k));
++            proj.terrain_cols[k] = _nc;
++        }
++    }
++    _y += 156;
++
++    ui_heading(_fx, _y, "Level goal");
++    _y += 20;
++    set_val(proj, "goal_on", ui_toggle("lvl_goal_on", _fx, _y, "Count things to collect", proj.goal_on, "Goal counter|Shows a counter like GEMS 00/10 on the HUD. The Logic action 'Count towards the level goal' adds one; reaching the target finishes the level (or wins on the last one)."), "goalon");
++    _y += 34;
++    ui_heading(_fx, _y, "Label");
++    set_val(proj, "goal_label", string_upper(ui_textfield("lvl_goal_label", _fx, _y + 18, _half, 30, proj.goal_label, 6, "Goal label|The word shown before the counter, e.g. GEMS, STARS or KEYS.")), "goallabel");
++    ui_heading(_fx + _half + 12, _y, "How many per level");
++    set_val(proj, "goal", ui_stepper("lvl_goal", _fx + _half + 12, _y + 18, _half, proj.goal, 1, 99, "Goal|How many to collect on each level."), "goal");
++    _y += 62;
++
++    ui_heading(_fx, _y, "Screens");
++    _y += 20;
++    set_val(proj, "title_on", ui_toggle("lvl_title_on", _fx, _y, "Title screen", proj.title_on, "Title screen|Shows your title in big letters before the game. The player presses fire to start."), "titleon");
++    _y += 34;
++    ui_heading(_fx, _y, "Title (big letters, up to 10)");
++    set_val(proj, "title1", string_upper(ui_textfield("lvl_title1", _fx, _y + 18, _fw, 30, proj.title1, 10, "Title|Up to 10 letters, each made of 4 x 4 of the C64's quarter-block characters.")), "title1");
++    _y += 56;
++    ui_heading(_fx, _y, "Line under the title");
++    set_val(proj, "title2", string_upper(ui_textfield("lvl_title2", _fx, _y + 18, _fw, 30, proj.title2, 40, "Subtitle|A line under the title, e.g. PRESS FIRE TO START.")), "title2");
++    _y += 56;
++    ui_heading(_fx, _y, "Level card word");
++    set_val(proj, "lev_text", string_upper(ui_textfield("lvl_levtxt", _fx, _y + 18, _half, 30, proj.lev_text, 10, "Level card|Between levels a card shows this word and the level number, e.g. LEVEL 3. The player presses fire to go on.")), "levtxt");
++    _y += 60;
++    ui_text_wrap(_fx, _y, _endnote, global.TH.text_faint, _fw, global.f_small, 1);
++    ui_scroll_end("lvl_side", _px + 4, _y1 + 46, _x2 - 4, _y2 - 6, _content);
++}
+diff --git a/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.yy b/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.yy
+new file mode 100644
+index 0000000..e18787c
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_levels/scr_ws_levels.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_ws_levels",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_ws_levels",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml b/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
+index 38d7de1..bb1db9e 100644
+--- a/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
++++ b/C64NoCode/scripts/scr_ws_logic/scr_ws_logic.gml
+@@ -154,6 +154,7 @@ function logic_do_phrase(_d, _names, _na)
+             var _pn = "show the bitmap '" + proj.pictures[clamp(_d.value, 0, array_length(proj.pictures) - 1)].name + "'";
+             if (_d.target > 0) { return _pn + " for " + string(_d.target) + " seconds"; }
+             return _pn + " until fire is pressed";
++        case 20: return "count one towards the level goal";
+     }
+     return "?";
+ }
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index eef7d43..cc202b3 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -11,7 +11,8 @@
+ #macro WS_ANIMATE 14
+ #macro WS_BITMAPS 15
+ #macro WS_UI 16
+-#macro WS_COUNT 17
++#macro WS_LEVELS 17
++#macro WS_COUNT 18
+ 
+ function ws_set(_i)
+ {
+@@ -283,12 +284,12 @@ function ws_tabs()
+     {
+         return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_BITMAPS, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
+     }
+-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
++    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_LEVELS, WS_BITMAPS, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_UI, WS_BUILD];
+ }
+ 
+ function ws_name(_w)
+ {
+-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps", "UI"];
++    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate", "Bitmaps", "UI", "Levels"];
+     return _n[_w];
+ }
+ 
+@@ -311,7 +312,8 @@ function ws_help(_w)
+         "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play.",
+         "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left.",
+         "Bitmaps|Paint full-screen C64 bitmaps in multicolour or hi-res, or import PNG, JPG and Koala pictures, and show them as the title screen, the loading screen, the game over and winning screens, before a level or from a rule. Each takes about 10 KB of the game.",
+-        "UI|Design your own HUD: a panel at the top or bottom with a frame of 9 characters, a font style or letters you draw, and the score, lives, goal and level placed where you want them."
++        "UI|Design your own HUD: a panel at the top or bottom with a frame of 9 characters, a font style or letters you draw, and the score, lives, goal and level placed where you want them.",
++        "Levels|Up to 8 levels, each with its own hills grown from a seed and shaped by hand, for actors to walk on. Also the level goal counter, the level card and the title screen."
+     ];
+     return _h[_w];
+ }

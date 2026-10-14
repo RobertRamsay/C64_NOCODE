@@ -214,17 +214,25 @@ function ws_actors_draw(_x1, _y1, _x2, _y2)
         "Moves left and right, turning around at the screen edges.",
         "Moves up and down, turning around at the top and bottom.",
         "Always heads towards the player. Speed 1 is gentle, 3 is scary!",
-        "Stays where you put it. Great for pickups, doors and goals."
+        "Stays where you put it. Great for pickups, doors and goals.",
+        "Walks on the ground (Levels page hills, or the bottom of the screen): left and right move, fire or up jumps.",
+        "Walks along the ground by itself, turning round at walls and at the edges of the screen."
     ];
     ui_rrect(_fx2, _y, _fx2 + _fw2, _y + 50, 8, global.TH.inset_top, global.TH.inset_bot, 0.8);
-    ui_text_wrap(_fx2 + 10, _y + 7, _rdesc[clamp(_s.role, 0, 5)], global.TH.text_dim, _fw2 - 20, global.f_small, 1);
+    ui_text_wrap(_fx2 + 10, _y + 7, _rdesc[clamp(_s.role, 0, 7)], global.TH.text_dim, _fw2 - 20, global.f_small, 1);
     _y += 62;
     ui_heading(_fx2, _y, "Speed");
     set_val(_s, "speed", ui_stepper("act_speed", _fx2, _y + 18, _half, _s.speed, 1, 8, "Speed|Pixels moved every frame (50 frames per second). 1 is slow, 8 is very fast."), "actspeed");
     ui_heading(_fx2 + _half + 12, _y, "Visible at start");
     set_val(_s, "visible", ui_toggle("act_vis", _fx2 + _half + 12, _y + 22, "Shown", _s.visible, "Visible at start|Hidden actors can be shown later with the 'Show actor' action in Logic."), "actvis");
     _y += 62;
-    if (_s.role == 1 || _s.role == 2)
+    if (proj.levels_on && array_length(proj.stages) > 1)
+    {
+        ui_heading(_fx2, _y, "Appears from level");
+        set_val(_s, "from_level", ui_stepper("act_from", _fx2, _y + 18, _half, clamp(_s.from_level, 1, array_length(proj.stages)), 1, array_length(proj.stages), "Appears from level|This actor joins the game on this level and stays for the rest (Levels page). 1 = from the start."), "actfrom");
+        _y += 62;
+    }
+    if (_s.role == 1 || _s.role == 2 || _s.role == 7)
     {
         set_val(_s, "start_left", ui_toggle("act_left", _fx2, _y, "Starts moving left", _s.start_left, "Start direction|Whether this actor starts heading left instead of right."), "actleft");
         _y += 32;

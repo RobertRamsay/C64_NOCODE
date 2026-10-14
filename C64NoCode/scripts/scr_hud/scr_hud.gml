@@ -30,7 +30,8 @@ function hud_field_types()
 /// Field types this kind of game has (Goal and Level belong to map games)
 function hud_type_count(_p)
 {
-    return (_p.game_type == 1) ? 7 : 3;
+    if (_p.game_type == 1) { return 7; }
+    return (_p.goal_on || _p.levels_on) ? 5 : 3;
 }
 
 /// The custom HUD of a new project: off (the standard HUD is used)
@@ -374,9 +375,10 @@ function hud_field_value(_p, _f, _sample)
             if (_p.game_type == 1) { _lv = _sample ? clamp(_p.eng.lives, 1, 9) : 0; }
             return string_replace_all(string_format(_lv, _d, 0), " ", "0");
         case 3:
-            if (!_sample) { return "00/00"; }
+            if (!_sample) { return (_p.game_type == 0) ? "00/" + string_replace_all(string_format(clamp(_p.goal, 1, 99), 2, 0), " ", "0") : "00/00"; }
             var _need = 12;
             if (_p.game_type == 1 && array_length(_p.levels) > 0 && _p.levels[0].need > 0) { _need = clamp(_p.levels[0].need, 1, 99); }
+            if (_p.game_type == 0) { _need = clamp(_p.goal, 1, 99); }
             return "05/" + string_replace_all(string_format(_need, 2, 0), " ", "0");
         case 4:
             return string_replace_all(string_format(1, _d, 0), " ", "0");
@@ -559,6 +561,14 @@ function hud_emit_live_single(L, _p, _lv, _addr)
         }
     }
     if (_f.type == 2) { array_push(L, " lda lives", " ora #48", " sta " + string(_addr + _d - 1)); }
+    // the Levels page's goal counter (got / needed) and the level number
+    if (_f.type == 3) { array_push(L, " lda goal_got", " jsr b2d", " stx " + string(_addr), " sta " + string(_addr + 1)); }
+    if (_f.type == 4)
+    {
+        array_push(L, " lda level", " clc", " adc #1", " jsr b2d");
+        if (_d == 2) { array_push(L, " stx " + string(_addr), " sta " + string(_addr + 1)); }
+        else { array_push(L, " sta " + string(_addr)); }
+    }
 }
 
 /// The custom HUD of a single-screen game: hud_panel (the panel, after draw_screen) and
@@ -795,6 +805,20 @@ function hud_preview_render(_x, _y, _sc)
                 var _ch = _p.chars[_i];
                 if (_ch == 32) { continue; }
                 draw_sprite_part_ext(_sheet, 0, (_ch mod 16) * 8, (_ch div 16) * 8, 8, 8, _x + c * _cs, _y + r * _cs, _sc, _sc, c64col(_p.cols[_i]), 1);
+            }
+        }
+        // the Levels page: the picked level's hills over the screen
+        if (_p.levels_on && array_length(_p.stages) > 0)
+        {
+            var _hc = stage_cells(_p, _p.stages[clamp(lvl_sel, 0, array_length(_p.stages) - 1)].heights);
+            for (var k2 = 0; k2 < 1000; k2++)
+            {
+                var _hch = _hc.scr[k2];
+                if (_hch < 0) { continue; }
+                var _hx = _x + (k2 mod 40) * _cs;
+                var _hy = _y + (k2 div 40) * _cs;
+                px_rect(_hx, _hy, _cs, _cs, c64col(_bgc));
+                draw_sprite_part_ext(_sheet, 0, (_hch mod 16) * 8, (_hch div 16) * 8, 8, 8, _hx, _hy, _sc, _sc, c64col(_hc.col[k2]), 1);
             }
         }
     }

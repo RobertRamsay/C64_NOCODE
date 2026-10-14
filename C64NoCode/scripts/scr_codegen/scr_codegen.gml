@@ -131,10 +131,34 @@ function cg_do_lines(L, _p, _d, _tag, na)
             if (_ps == 255) { array_push(L, " rts"); }
             else { array_push(L, " lda #" + string(_ps), " ldx #" + string(clamp(_d.target, 0, 30)), " jmp pic_show"); }
             break;
+        case 20:
+            // count one towards the level goal (Levels page): reaching it moves on after this frame
+            if (!_p.goal_on) { array_push(L, " rts"); break; }
+            array_push(L, " lda goal_got", " cmp #99", " bcs gq" + _tag, " inc goal_got", "gq" + _tag + ":", " jsr draw_hud");
+            array_push(L, " lda goal_got", " cmp #" + string(clamp(_p.goal, 1, 99)), " bcc gr" + _tag, " lda #1", " sta lvl_pend", "gr" + _tag + ":", " rts");
+            break;
         default:
             array_push(L, " rts");
             break;
     }
+}
+
+/// The code that wins the game (DO 'You win!', and after the last level)
+function cg_win_lines(_p)
+{
+    if (_p.pic_win >= 0 && _p.pic_win < array_length(_p.pictures)) { return [" lda #" + string(bmp_slot(bmp_game_list(_p), _p.pic_win)), " jmp pic_end_scr"]; }
+    return [" ldx #<txt_win", " ldy #>txt_win", " jmp end_screen"];
+}
+
+/// Does the game draw hills (levels on), or need the ground line (actors that walk on it)?
+function stage_has_hills(_p, na)
+{
+    if (_p.levels_on) { return true; }
+    for (var a = 0; a < na; a++)
+    {
+        if (role_on_ground(_p.actors[a].role)) { return true; }
+    }
+    return false;
 }
 
 /// Returns { src, warnings[], lines[], marks[] } - marks are { rule, from, to } line ranges
@@ -160,7 +184,7 @@ function codegen_project(_p)
     var _player = -1;
     for (var i = 0; i < na; i++)
     {
-        if (_acts[i].role == 0)
+        if (role_is_player(_acts[i].role))
         {
             _player = i;
             break;
@@ -174,8 +198,10 @@ function codegen_project(_p)
     if (_chase_target < 0) { _chase_target = 0; }
 
     var _names = ["ax_lo", "ax_hi", "ay", "aspd", "avis", "adx", "ady", "latch",
-                  "joy", "fcount", "sectick", "coll", "bcoll", "tmp", "tmp2", "lives", "score_lo", "score_hi", "flash", "acnt"];
-    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+                  "joy", "fcount", "sectick", "coll", "bcoll", "tmp", "tmp2", "lives", "score_lo", "score_hi", "flash", "acnt",
+                  "level", "goal_got", "lvl_pend", "avy", "agr", "tmp3", "tmp4", "tmp5", "tmp6", "hcol", "hrow", "hch", "hcl", "hdep"];
+    var _sizes = [8, 8, 8, 8, 8, 8, 8, max(1, nr), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                  1, 1, 1, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     var _varlen = 0;
     for (var vl = 0; vl < array_length(_sizes); vl++) { _varlen += _sizes[vl]; }
 
@@ -191,11 +217,15 @@ function codegen_project(_p)
     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
     array_push(L, " lda #" + string(_p.border), " sta $d020", " lda #" + string(_p.background), " sta $d021");
     array_push(L, " lda #$1b", " sta $d011", " jsr set_chars", " lda #$c8", " sta $d016");
-    array_push(L, " jsr draw_screen");
     array_push(L, " jsr sfx_init");
-    // the screen's song (Music page: Where the music plays); one already playing carries on
+    // the first level's song (Music page: Where the music plays); one already playing carries on
     array_push(L, " lda #0", " jsr mus_level");
-
+    array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
+    // the Levels page: the title screen, then the first level (screen, hills, actors)
+    if (_p.title_on) { array_push(L, " jsr title_screen"); }
+    array_push(L, " jsr level_begin");
+    var _init = [];
+    array_push(_init, "actors_init:");
     var _mc = 0;
     for (var a = 0; a < na; a++)
     {
@@ -205,27 +235,26 @@ function codegen_project(_p)
         var _x = clamp(floor(_ac.x), CG_XMIN, CG_XMAX);
         var _y = clamp(floor(_ac.y), CG_YMIN, CG_YMAX);
         var _sa = string(a);
-        array_push(L, " lda #spr_data/64+" + string(_si), " sta $07f8+" + _sa);
-        array_push(L, " lda #" + string(_ac.colour), " sta $d027+" + _sa);
-        array_push(L, " lda #" + string(_x & 255), " sta ax_lo+" + _sa);
-        array_push(L, " lda #" + string(_x >> 8), " sta ax_hi+" + _sa);
-        array_push(L, " lda #" + string(_y), " sta ay+" + _sa);
-        array_push(L, " lda #" + string(clamp(_ac.speed, 1, 8)), " sta aspd+" + _sa);
+        array_push(_init, " lda #spr_data/64+" + string(_si), " sta $07f8+" + _sa);
+        array_push(_init, " lda #" + string(_ac.colour), " sta $d027+" + _sa);
+        array_push(_init, " lda #" + string(_x & 255), " sta ax_lo+" + _sa);
+        array_push(_init, " lda #" + string(_x >> 8), " sta ax_hi+" + _sa);
+        array_push(_init, " lda #" + string(_y), " sta ay+" + _sa);
+        array_push(_init, " lda #" + string(clamp(_ac.speed, 1, 8)), " sta aspd+" + _sa);
+        array_push(_init, " lda #0", " sta avy+" + _sa, " sta agr+" + _sa);
         var _vis = 0;
         if (_ac.visible) { _vis = 1; }
         var _dx = 0;
         if (_ac.start_left) { _dx = 1; }
         var _dy = 0;
         if (_ac.start_up) { _dy = 1; }
-        array_push(L, " lda #" + string(_vis), " sta avis+" + _sa);
-        array_push(L, " lda #" + string(_dx), " sta adx+" + _sa);
-        array_push(L, " lda #" + string(_dy), " sta ady+" + _sa);
+        stage_emit_actor_vis(_init, _ac, _sa, _vis);
+        array_push(_init, " lda #" + string(_dx), " sta adx+" + _sa);
+        array_push(_init, " lda #" + string(_dy), " sta ady+" + _sa);
     }
-    array_push(L, " lda #" + string(_mc), " sta $d01c");
-    array_push(L, " lda #" + string(_p.mc1), " sta $d025", " lda #" + string(_p.mc2), " sta $d026");
-    array_push(L, " lda #0", " sta $d017", " sta $d01d", " sta $d01b");
-    array_push(L, " lda #" + string(clamp(_p.lives, 0, 9)), " sta lives");
-    array_push(L, " jsr draw_hud", " jsr place_sprites", " lda $d01e", " lda $d01f");
+    array_push(_init, " lda #" + string(_mc), " sta $d01c");
+    array_push(_init, " lda #" + string(_p.mc1), " sta $d025", " lda #" + string(_p.mc2), " sta $d026");
+    array_push(_init, " lda #0", " sta $d017", " sta $d01d", " sta $d01b", " rts");
     // the title bitmap (Bitmaps page) until fire is pressed - the screen's song plays meanwhile
     var _pics = bmp_game_list(_p);
     if (_p.pic_title >= 0 && _p.pic_title < array_length(_p.pictures)) { array_push(L, " lda #" + string(bmp_slot(_pics, _p.pic_title)), " ldx #0", " jsr pic_show", " lda $d01e", " lda $d01f"); }
@@ -239,7 +268,8 @@ function codegen_project(_p)
             array_push(_marks, _m0);
         }
     }
-    array_push(L, "mainloop:", "wr1:", " lda $d012", " cmp #250", " bne wr1", " jsr frame", " jmp mainloop");
+    array_push(L, "mainloop:", "wr1:", " lda $d012", " cmp #250", " bne wr1", " jsr frame", " lda lvl_pend", " beq mainloop", " jmp next_level");
+    for (var ii = 0; ii < array_length(_init); ii++) { array_push(L, _init[ii]); }
 
     // ---------------- per-frame update ----------------
     array_push(L, "frame:");
@@ -288,6 +318,7 @@ function codegen_project(_p)
             array_push(L, " lda ay+" + s, " sec", " sbc aspd+" + s, " cmp #" + string(CG_YMIN), " bcs bv" + t, " lda #0", " sta ady+" + s, " lda #" + string(CG_YMIN));
             array_push(L, "bv" + t + ":", " sta ay+" + s);
         }
+        if (role_on_ground(_role)) { stage_emit_actor(L, _acts[m], m); }
         if (_role == 4 && m != _chase_target)
         {
             var c = string(_chase_target);
@@ -397,8 +428,10 @@ function codegen_project(_p)
         {
             var _as = string(an);
             array_push(L, " lda ax_lo+" + _as, " sec", " sbc as_px+" + _as, " sta an_dx", " lda ax_lo+" + _as, " sta as_px+" + _as);
-            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as, " lda #0", " sta an_air");
-            if (_acts[an].role == 0) { array_push(L, " lda joy", " and #16"); }
+            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as);
+            if (role_on_ground(_acts[an].role)) { array_push(L, " lda agr+" + _as, " eor #1", " sta an_air"); }
+            else { array_push(L, " lda #0", " sta an_air"); }
+            if (role_is_player(_acts[an].role)) { array_push(L, " lda joy", " and #16"); }
             array_push(L, " sta an_fire", " ldx #" + _as, " lda #" + _as, " jsr anim_upd", " tay", " lda an_mc,y", " beq amc_" + _as, " lda #" + string(1 << an), "amc_" + _as + ":", " sta an_fl", " lda $d01c", " and #" + string(255 - (1 << an)), " ora an_fl", " sta $d01c", " tya", " clc", " adc #spr_data/64", " sta $07f8+" + _as);
             continue;
         }
@@ -422,6 +455,7 @@ function codegen_project(_p)
         array_push(L, " lda col_data+" + _o + ",x", " sta $d800+" + _o + ",x");
     }
     array_push(L, " inx", " cpx #250", " bne cpy1");
+    if (stage_has_hills(_p, na)) { array_push(L, " jsr draw_hills"); }
     // the UI page's custom HUD: draw_screen runs on into its panel, then its own draw_hud
     var _hud_on = hud_emit_single(L, _p);
     if (!_hud_on) { array_push(L, " rts"); }
@@ -449,6 +483,22 @@ function codegen_project(_p)
             else { array_push(L, " and #15"); }
             array_push(L, " ora #48", " sta " + string(_d + dd), " lda #" + _hc, " sta " + string(_d + dd + 54272));
         }
+    }
+    if (!_hud_on && _p.goal_on)
+    {
+        var _gb = 1024 + _row * 40 + 14;
+        var _gl = _p.goal_label + " ";
+        var _gt = cg_bcd(0);
+        for (var gc = 1; gc <= string_length(_gl); gc++)
+        {
+            array_push(L, " lda #" + string(scr_code_from_char(string_char_at(_gl, gc))), " sta " + string(_gb + gc - 1), " lda #" + _hc, " sta " + string(_gb + gc - 1 + 54272));
+        }
+        var _gd = _gb + string_length(_gl);
+        var _goal2 = string_replace_all(string_format(_p.goal, 2, 0), " ", "0");
+        array_push(L, " lda goal_got", " jsr b2d", " stx " + string(_gd), " sta " + string(_gd + 1));
+        var _rest = "/" + _goal2;
+        for (var gr = 1; gr <= 3; gr++) { array_push(L, " lda #" + string(scr_code_from_char(string_char_at(_rest, gr))), " sta " + string(_gd + 1 + gr)); }
+        for (var gk = 0; gk < 5; gk++) { array_push(L, " lda #" + _hc, " sta " + string(_gd + gk + 54272)); }
     }
     if (!_hud_on && _p.show_lives)
     {
@@ -534,6 +584,7 @@ function codegen_project(_p)
     array_push(L, "col_data:");
     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
     // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
+    stage_emit(L, _p, na, cg_win_lines(_p));
     music_emit(L, _p);
     digi_emit(L, _p);
     patch_emit(L, _p);

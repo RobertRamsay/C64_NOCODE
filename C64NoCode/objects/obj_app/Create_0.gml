@@ -308,6 +308,10 @@ hud_prev_surf = -1;
 hud_sheet_key = "";
 hud_sheet_tick = 0;
 hud_away = true;
+// the Levels page
+lvl_sel = 0;
+lvl_drawing = false;
+lvl_last_x = -1;
 mus_pl = undefined;
 mus_queue = -1;
 mus_inst = -1;
