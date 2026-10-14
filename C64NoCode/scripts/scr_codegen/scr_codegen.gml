@@ -160,6 +160,8 @@ function codegen_project(_p)
     }
     if (na == 0) { array_push(_warn, "There are no actors yet - the game will just show your screen."); }
     if (_player < 0 && na > 0) { array_push(_warn, "No actor is set as Player, so the joystick will not move anything."); }
+    var _ab = anim_build(_p);
+    for (var aw = 0; aw < array_length(_ab.warnings); aw++) { array_push(_warn, _ab.warnings[aw]); }
     var _chase_target = _player;
     if (_chase_target < 0) { _chase_target = 0; }
 
@@ -382,10 +384,20 @@ function codegen_project(_p)
         array_push(L, " lda ax_hi+" + qs, " beq ph_" + qs, " lda tmp", " ora #" + string(1 << q), " sta tmp", "ph_" + qs + ":");
         array_push(L, " lda avis+" + qs, " beq pv_" + qs, " lda tmp2", " ora #" + string(1 << q), " sta tmp2", "pv_" + qs + ":");
     }
-    // animated sprites: pointer = base + ((acnt >> speed) & mask)
+    // animated sprites: pointer = base + ((acnt >> speed) & mask) - or the Animate page's
+    // animations: anim_upd works out which way the actor moved and picks the frame
     for (var an = 0; an < na; an++)
     {
         var _asp = _p.sprites[clamp(_acts[an].sprite, 0, SPR_COUNT - 1)];
+        if (an < array_length(_ab.members) && _ab.members[an].on)
+        {
+            var _as = string(an);
+            array_push(L, " lda ax_lo+" + _as, " sec", " sbc as_px+" + _as, " sta an_dx", " lda ax_lo+" + _as, " sta as_px+" + _as);
+            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as, " lda #0", " sta an_air");
+            if (_acts[an].role == 0) { array_push(L, " lda joy", " and #16"); }
+            array_push(L, " sta an_fire", " ldx #" + _as, " lda #" + _as, " jsr anim_upd", " tay", " lda an_mc,y", " beq amc_" + _as, " lda #" + string(1 << an), "amc_" + _as + ":", " sta an_fl", " lda $d01c", " and #" + string(255 - (1 << an)), " ora an_fl", " sta $d01c", " tya", " clc", " adc #spr_data/64", " sta $07f8+" + _as);
+            continue;
+        }
         if (_asp.frames > 1)
         {
             var _mask = 1;
@@ -492,6 +504,9 @@ function codegen_project(_p)
         var _bytes = sprite_encode(_p.sprites[sp]);
         array_push(L, " .byte " + cg_join_bytes(_bytes, 0, 63) + ",0");
     }
+    // sprites turned round for the Animate page (slots 32 on)
+    anim_emit_mirrors(L, _p, _ab);
+    array_push(L, "spr_end:");
     array_push(L, "scr_data:");
     for (var sr = 0; sr < 25; sr++) { array_push(L, " .byte " + cg_join_bytes(_p.chars, sr * 40, 40)); }
     array_push(L, "col_data:");
@@ -500,6 +515,7 @@ function codegen_project(_p)
     music_emit(L, _p);
     digi_emit(L, _p);
     patch_emit(L, _p);
+    if (_ab.on) { anim_emit(L, _ab); }
 
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }
@@ -518,11 +534,11 @@ function build_prg(_path)
         return false;
     }
     var _end = _res.org + array_length(_res.bytes);
-    var _spr = _res.labels[$ "spr_data"];
-    if (_spr + SPR_COUNT * 64 > 16384)
+    var _spr_end = _res.labels[$ "spr_end"];
+    if (_spr_end > 16384)
     {
         build_ok = false;
-        build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr + SPR_COUNT * 64)) + ", past $4000 where the VIC-II can see them. Use fewer rules or switch a group off.";
+        build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr_end)) + ", past $4000 where the VIC-II can see them. Use fewer rules, switch a group off, or turn fewer sprites round on the Animate page.";
         return false;
     }
     if (_end > C64_BASIC_END)
@@ -543,7 +559,7 @@ function build_prg(_path)
     build_ok = true;
     build_size = array_length(_res.bytes) + 2;
     build_end = _end;
-    build_spr = _spr;
+    build_spr = _res.labels[$ "spr_data"];
     build_msg = "Built " + filename_name(_path) + " - " + string(build_size) + " bytes ($0801-$" + string_upper(dec_to_hex(_end - 1)) + ")";
     return true;
 }

@@ -3354,7 +3354,9 @@ ps_xok:
 rx_10:
     lda t2
     cmp #<(WIN_PXH-6)
-    bcs ps_next
+    bcc rx_10b
+    jmp ps_next
+rx_10b:
     clc
     adc #OFFY
     sta sh_y,x
@@ -3376,6 +3378,30 @@ ps_m0:
     ora sh_mc
     sta sh_mc
 ps_m1:
+    .if ANIM_ON
+    ; Animate page: anim_ent gives the sprite slot (carry set), else the Sprites page animation
+    jsr anim_ent
+    bcc ps_leg
+    pha
+    tay
+    lda bit_t,x
+    eor #$ff
+    and sh_mc
+    sta sh_mc
+    lda an_mc,y
+    beq ps_amc
+    lda bit_t,x
+    ora sh_mc
+    sta sh_mc
+ps_amc:
+    pla
+    clc
+    adc #128
+    sta sh_ptr,x
+    jmp ps_next
+ps_leg:
+    ldy e_spr,x
+    .endif
     ; animation frame: base + ((fcount >> rate) & mask); the player only animates while moving
     lda #0
     sta t3

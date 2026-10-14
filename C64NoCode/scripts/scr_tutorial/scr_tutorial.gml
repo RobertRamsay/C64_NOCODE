@@ -67,6 +67,11 @@ function tut_init()
         tut_step(WS_SOUND, "snd_kind_2", "Patches", "Patch is ADAM's patch synth on the real chip: three oscillators with sync and ring modulation, the filter with its own envelope, LFOs and a modulation matrix. Start from a preset, or press Randomise and Mutate until something great happens."),
         tut_step(WS_SOUND, "snd_preview", "Listen", "Play the sound any time (or press Space). Rules on the Logic page choose when your game plays it."),
         // ---------- MUSIC ----------
+        tut_step(WS_ANIMATE, "", "Animate", "Animations for your cast, played by a small routine in the game that watches which way each sprite moves. Pick someone on the left."),
+        tut_step(WS_ANIMATE, "anim_mid_0", "The joystick", "The middle plays while it stands still, the 8 slots round it while it moves that way. Leave directions empty and they borrow from Walk or from each other."),
+        tut_step(WS_ANIMATE, "anim_bank_0", "Pick the frames", "Click a frame slot, then sprites in the bank - each click adds a frame. Double-click a sprite to draw it."),
+        tut_step(WS_ANIMATE, "anim_flip", "Turn to face left", "Draw facing right and the game turns the frames round when it moves left. The VIC-II can't flip sprites, so each one turned round becomes a mirrored copy - up to 32."),
+        tut_step(WS_ANIMATE, "anim_test", "Test it", "Drive the preview with the arrow keys or a gamepad, as the joystick will in the game."),
         tut_step(WS_MUSIC, "", "Music", "Songs for the SID chip's 3 voices, played by a small music driver inside your game. Sound effects borrow voice 1 or 2 while they play, then the music has the voice back."),
         tut_step(WS_MUSIC, "mus_cat_0", "The loop library", "Ready-made one-bar loops: drums, bass, chords, leads and effects. Click one to hear it - it becomes your brush."),
         tut_step(WS_MUSIC, "mus_grid", "Paint the song", "Each row is a SID voice, each box a bar. Click empty bars to paint your loop, right-click to rub out, double-click a loop to change its notes in the step editor: drag a note's circle onto a later note to bend into it, and use the effect row for slides, vibrato and volume."),

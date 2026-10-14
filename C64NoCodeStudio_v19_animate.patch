@@ -1,0 +1,2053 @@
+diff --git a/C64NoCode/C64NoCodeStudio.yyp b/C64NoCode/C64NoCodeStudio.yyp
+index 3838dff..c6e7eff 100644
+--- a/C64NoCode/C64NoCodeStudio.yyp
++++ b/C64NoCode/C64NoCodeStudio.yyp
+@@ -37,6 +37,7 @@
+     {"id":{"name":"scr_asm6502","path":"scripts/scr_asm6502/scr_asm6502.yy",},},
+     {"id":{"name":"scr_codegen","path":"scripts/scr_codegen/scr_codegen.yy",},},
+     {"id":{"name":"scr_codeview","path":"scripts/scr_codeview/scr_codeview.yy",},},
++    {"id":{"name":"scr_anim","path":"scripts/scr_anim/scr_anim.yy",},},
+     {"id":{"name":"scr_digi","path":"scripts/scr_digi/scr_digi.yy",},},
+     {"id":{"name":"scr_engine_gen","path":"scripts/scr_engine_gen/scr_engine_gen.yy",},},
+     {"id":{"name":"scr_gfx","path":"scripts/scr_gfx/scr_gfx.yy",},},
+@@ -57,6 +58,7 @@
+     {"id":{"name":"scr_ws_actors","path":"scripts/scr_ws_actors/scr_ws_actors.yy",},},
+     {"id":{"name":"scr_ws_build","path":"scripts/scr_ws_build/scr_ws_build.yy",},},
+     {"id":{"name":"scr_ws_engine","path":"scripts/scr_ws_engine/scr_ws_engine.yy",},},
++    {"id":{"name":"scr_ws_animate","path":"scripts/scr_ws_animate/scr_ws_animate.yy",},},
+     {"id":{"name":"scr_ws_home","path":"scripts/scr_ws_home/scr_ws_home.yy",},},
+     {"id":{"name":"scr_ws_logic","path":"scripts/scr_ws_logic/scr_ws_logic.yy",},},
+     {"id":{"name":"scr_ws_music","path":"scripts/scr_ws_music/scr_ws_music.yy",},},
+diff --git a/C64NoCode/datafiles/engine/engine.asm b/C64NoCode/datafiles/engine/engine.asm
+index 2120884..c5a2e56 100644
+--- a/C64NoCode/datafiles/engine/engine.asm
++++ b/C64NoCode/datafiles/engine/engine.asm
+@@ -3354,7 +3354,9 @@ ps_xok:
+ rx_10:
+     lda t2
+     cmp #<(WIN_PXH-6)
+-    bcs ps_next
++    bcc rx_10b
++    jmp ps_next
++rx_10b:
+     clc
+     adc #OFFY
+     sta sh_y,x
+@@ -3376,6 +3378,30 @@ ps_m0:
+     ora sh_mc
+     sta sh_mc
+ ps_m1:
++    .if ANIM_ON
++    ; Animate page: anim_ent gives the sprite slot (carry set), else the Sprites page animation
++    jsr anim_ent
++    bcc ps_leg
++    pha
++    tay
++    lda bit_t,x
++    eor #$ff
++    and sh_mc
++    sta sh_mc
++    lda an_mc,y
++    beq ps_amc
++    lda bit_t,x
++    ora sh_mc
++    sta sh_mc
++ps_amc:
++    pla
++    clc
++    adc #128
++    sta sh_ptr,x
++    jmp ps_next
++ps_leg:
++    ldy e_spr,x
++    .endif
+     ; animation frame: base + ((fcount >> rate) & mask); the player only animates while moving
+     lda #0
+     sta t3
+diff --git a/C64NoCode/objects/obj_app/Create_0.gml b/C64NoCode/objects/obj_app/Create_0.gml
+index a9fa56b..4123c80 100644
+--- a/C64NoCode/objects/obj_app/Create_0.gml
++++ b/C64NoCode/objects/obj_app/Create_0.gml
+@@ -228,6 +228,35 @@ mus_ed_fx_step = 0;
+ mus_ed_fx_drag = false;
+ mus_ed_fx_src = 0;
+ mus_ed_fx_end = 0;
++// Animate page (scr_ws_animate)
++anim_cast_sel = 0;
++anim_sel = 1;
++anim_slot = 0;
++anim_t0 = 0;
++anim_test = false;
++anim_test_source = 0;
++anim_test_entry = -1;
++anim_test_t0 = 0;
++anim_test_dir = 2;
++anim_test_face = false;
++anim_face_left = false;
++anim_click_id = "";
++anim_click_time = 0;
++anim_click_added = false;
++anim_click_set = undefined;
++anim_lib_tab = 0;
++anim_drag_armed = false;
++anim_drag_on = false;
++anim_drag_x0 = 0;
++anim_drag_y0 = 0;
++anim_drag_frames = [];
++anim_drag_rate = 8;
++anim_drag_mode = 0;
++anim_drag_flip = false;
++anim_drag_col = 1;
++anim_drag_label = "";
++anim_drag_src = -1;
++anim_drop_k = -1;
+ mus_pl = undefined;
+ mus_queue = -1;
+ mus_inst = -1;
+diff --git a/C64NoCode/objects/obj_app/Draw_64.gml b/C64NoCode/objects/obj_app/Draw_64.gml
+index fee8a7e..c003dd1 100644
+--- a/C64NoCode/objects/obj_app/Draw_64.gml
++++ b/C64NoCode/objects/obj_app/Draw_64.gml
+@@ -24,6 +24,7 @@ switch (ws)
+     case WS_MAP:     ws_map_draw(_x1, _y1, _x2, _y2);     break;
+     case WS_ENEMIES: ws_enemies_draw(_x1, _y1, _x2, _y2); break;
+     case WS_MUSIC:   ws_music_draw(_x1, _y1, _x2, _y2);   break;
++    case WS_ANIMATE: ws_animate_draw(_x1, _y1, _x2, _y2); break;
+ }
+ 
+ draw_topbar(gui_w);
+diff --git a/C64NoCode/scripts/scr_anim/scr_anim.gml b/C64NoCode/scripts/scr_anim/scr_anim.gml
+new file mode 100644
+index 0000000..8b40564
+--- /dev/null
++++ b/C64NoCode/scripts/scr_anim/scr_anim.gml
+@@ -0,0 +1,679 @@
++/// C64 NO-CODE STUDIO - animations (the Animate page), ported from ADAM.
++/// Each member of the cast - the actors of a single-screen game; the player, its shot, the
++/// enemies' shot and the enemy types of a map game - can have ADAM's animations: Idle, Walk,
++/// Jump, Fall, the 8 joystick directions (N NE E SE S SW W NW), Fire and Fire + the 8
++/// directions. Each is up to 16 sprite slots, a speed in 50ths of a second per frame and a mode
++/// (loop, once, ping-pong). Empty ones borrow from the others (anim_plan, as ADAM's).
++///
++/// On the C64: the VIC-II can't turn a sprite round, so frames that are turned round (Turn to
++/// face left, or a direction borrowed from its partner) become mirrored copies of the sprite
++/// data, made at build time in up to 32 more sprite slots after the 32 drawn ones. A small
++/// 6502 routine (anim_upd, shared by both kinds of game) runs once a frame for every animated
++/// sprite: it works out which way the sprite moved since the last frame, picks the animation
++/// (in the air: Jump / Fall; holding fire: Fire; moving: Walk or the direction; else Idle),
++/// starts it again when it changes, counts its speed and steps its frames.
++/// A member with no frames here keeps the Sprites page animation of its sprite.
++
++#macro ANIM_COUNT 21            // 0 Idle, 1 Walk, 2 Jump, 3 Fall, 4..11 N NE E SE S SW W NW, 12 Fire, 13..20 Fire + N .. NW
++#macro ANIM_BASIC 4
++#macro ANIM_DIR0 4
++#macro ANIM_FIRE0 12
++#macro ANIM_FRAMES 16
++#macro ANIM_MIRRORS 32          // mirrored copies: sprite slots 32..63 (the VIC-II sees 64 after the sprite base)
++
++function anim_new()
++{
++    return { frames : [], rate : 8, mode : 0 };      // mode 0 loop, 1 once, 2 ping-pong
++}
++
++function anims_new()
++{
++    var _a = [];
++    for (var i = 0; i < ANIM_COUNT; i++) { array_push(_a, anim_new()); }
++    return _a;
++}
++
++/// What holds a cast member's animations (an actor and an enemy type hold them themselves)
++function anim_holder_new()
++{
++    return { anims : anims_new(), anim_flip : false };
++}
++
++/// Makes a loaded anims array safe: 21 entries, up to 16 frames each, values in range
++function anims_from_loaded(_raw)
++{
++    var _out = anims_new();
++    if (!is_array(_raw)) { return _out; }
++    for (var i = 0; i < min(ANIM_COUNT, array_length(_raw)); i++)
++    {
++        var _e = _raw[i];
++        if (!is_struct(_e)) { continue; }
++        var _fr = _e[$ "frames"];
++        if (is_array(_fr))
++        {
++            for (var k = 0; k < min(ANIM_FRAMES, array_length(_fr)); k++)
++            {
++                if (is_numeric(_fr[k])) { array_push(_out[i].frames, clamp(floor(_fr[k]), 0, SPR_COUNT - 1)); }
++            }
++        }
++        var _r = _e[$ "rate"];
++        if (is_numeric(_r)) { _out[i].rate = clamp(floor(_r), 2, 30); }
++        var _m = _e[$ "mode"];
++        if (is_numeric(_m)) { _out[i].mode = clamp(floor(_m), 0, 2); }
++    }
++    return _out;
++}
++
++/// Makes a loaded holder (or actor / enemy type) safe
++function anim_holder_fix(_h)
++{
++    if (!is_struct(_h)) { return anim_holder_new(); }
++    _h.anims = anims_from_loaded(_h[$ "anims"]);
++    _h.anim_flip = (_h[$ "anim_flip"] == true);
++    return _h;
++}
++
++/// After loading a project: every cast member's animations made safe
++function anim_project_fix(_p)
++{
++    for (var i = 0; i < array_length(_p.actors); i++) { anim_holder_fix(_p.actors[i]); }
++    for (var e = 0; e < array_length(_p.enemies); e++) { anim_holder_fix(_p.enemies[e]); }
++    _p.eng.anim_p = anim_holder_fix(_p.eng[$ "anim_p"]);
++    _p.eng.anim_b = anim_holder_fix(_p.eng[$ "anim_b"]);
++    _p.eng.anim_eb = anim_holder_fix(_p.eng[$ "anim_eb"]);
++}
++
++function anim_names()
++{
++    return ["Idle", "Walk", "Jump", "Fall", "N", "NE", "E", "SE", "S", "SW", "W", "NW",
++            "Fire", "N", "NE", "E", "SE", "S", "SW", "W", "NW"];
++}
++
++function anim_long_names()
++{
++    return ["Idle", "Walk", "Jump", "Fall", "Up", "Up and right", "Right", "Down and right", "Down", "Down and left", "Left", "Up and left",
++            "Fire", "Fire + up", "Fire + up and right", "Fire + right", "Fire + down and right", "Fire + down", "Fire + down and left", "Fire + left", "Fire + up and left"];
++}
++
++function anim_mode_names()
++{
++    return ["Loop", "Once (then hold)", "Ping-pong"];
++}
++
++/// True when the member has frames here (they replace its sprite's Sprites page animation)
++function anims_used(_h)
++{
++    for (var i = 0; i < ANIM_COUNT; i++)
++    {
++        if (array_length(_h.anims[i].frames) > 0) { return true; }
++    }
++    return false;
++}
++
++/// True when the joystick directions have frames: they are used instead of Walk
++function anims_dirs_on(_h)
++{
++    for (var i = ANIM_DIR0; i < ANIM_DIR0 + 8; i++)
++    {
++        if (array_length(_h.anims[i].frames) > 0) { return true; }
++    }
++    return false;
++}
++
++/// True when the member has Fire animations (only the player can hold fire)
++function anims_fire_used(_it)
++{
++    if (!_it.fire) { return false; }
++    for (var i = ANIM_FIRE0; i < ANIM_COUNT; i++)
++    {
++        if (array_length(_it.h.anims[i].frames) > 0) { return true; }
++    }
++    return false;
++}
++
++// ---------------------------------------------------------------------------
++// The cast
++// ---------------------------------------------------------------------------
++
++/// The cast of project _p: { name, sub, h (holds anims and anim_flip), sprite, colour,
++/// gravity (Jump and Fall are used), fire (Fire animations are used), member (its number in
++/// the game's animation tables), still_idle (the Sprites page animation only plays while it moves) }
++function anim_cast(_p)
++{
++    var _out = [];
++    if (_p.game_type == 1)
++    {
++        var _e = _p.eng;
++        array_push(_out, { name : "Player", sub : "Player", h : _e.anim_p, sprite : clamp(_e.pspr, 0, SPR_COUNT - 1), colour : _e.pcol, gravity : (_e.kind == KIND_PLAT), fire : true, member : 0, still_idle : true });
++        array_push(_out, { name : "Player's shot", sub : "Shot", h : _e.anim_b, sprite : clamp(_e.bspr, 0, SPR_COUNT - 1), colour : _e.bcol, gravity : false, fire : false, member : 1, still_idle : false });
++        array_push(_out, { name : "Enemy shot", sub : "Shot", h : _e.anim_eb, sprite : clamp(_e.ebspr, 0, SPR_COUNT - 1), colour : _e.ebcol, gravity : false, fire : false, member : 2, still_idle : false });
++        for (var i = 0; i < min(16, array_length(_p.enemies)); i++)
++        {
++            var _en = _p.enemies[i];
++            array_push(_out, { name : _en.name, sub : "Enemy", h : _en, sprite : clamp(_en.spr, 0, SPR_COUNT - 1), colour : _en.col, gravity : false, fire : false, member : 3 + i, still_idle : false });
++        }
++        return _out;
++    }
++    var _rn = ["Player", "Bouncer", "Patrol L-R", "Patrol U-D", "Chaser", "Still"];
++    for (var a = 0; a < min(8, array_length(_p.actors)); a++)
++    {
++        var _ac = _p.actors[a];
++        array_push(_out, { name : _ac.name, sub : _rn[clamp(_ac.role, 0, 5)], h : _ac, sprite : clamp(_ac.sprite, 0, SPR_COUNT - 1), colour : _ac.colour, gravity : false, fire : (_ac.role == 0), member : a, still_idle : false });
++    }
++    return _out;
++}
++
++/// The first change on the Animate page starts from the member's Sprites page animation
++/// (its sprite's frames and speed; left-facing frames become the Left direction)
++function anim_seed_from_legacy(_it)
++{
++    var _h = _it.h;
++    if (anims_used(_h)) { return; }
++    var _sp = proj.sprites[_it.sprite];
++    if (_sp.frames <= 1) { return; }
++    var _n = min(_sp.frames, 4);
++    var _right = [];
++    for (var f = 0; f < _n; f++) { array_push(_right, min(SPR_COUNT - 1, _it.sprite + f)); }
++    var _rate = clamp(1 << clamp(_sp.anim_speed, 0, 5), 2, 30);
++    _h.anims[1] = { frames : _right, rate : _rate, mode : 0 };
++    if (!_it.still_idle) { _h.anims[0] = { frames : variable_clone(_right), rate : _rate, mode : 0 }; }
++    if (_sp.left)
++    {
++        var _left = [];
++        for (var g = 0; g < _n; g++) { array_push(_left, min(SPR_COUNT - 1, _it.sprite + _n + g)); }
++        _h.anims[ANIM_DIR0 + 2] = { frames : variable_clone(_right), rate : _rate, mode : 0 };
++        _h.anims[ANIM_DIR0 + 6] = { frames : _left, rate : _rate, mode : 0 };
++    }
++}
++
++// ---------------------------------------------------------------------------
++// The plan: what the game plays (ADAM's anim_plan)
++// ---------------------------------------------------------------------------
++
++/// The directions tried, in order, for each of the 8 when it has no frames: [entry, turn]
++/// pairs - turn 1 = turned round (only with anim_flip), 2 = turned round when anim_flip is on;
++/// entry 1 is Walk
++function anim_dir_chains()
++{
++    return [
++        [[4, 0], [1, 0]],
++        [[5, 0], [11, 1], [6, 0], [10, 1], [1, 0]],
++        [[6, 0], [10, 1], [1, 0]],
++        [[7, 0], [9, 1], [6, 0], [10, 1], [1, 0]],
++        [[8, 0], [1, 0]],
++        [[9, 0], [7, 1], [10, 0], [6, 1], [1, 2]],
++        [[10, 0], [6, 1], [1, 2]],
++        [[11, 0], [5, 1], [10, 0], [6, 1], [1, 2]]
++    ];
++}
++
++function anim_resolve_dirs(_e, _base, _walk, _flip)
++{
++    var _chains = anim_dir_chains();
++    var _dirs = array_create(8, undefined);
++    for (var d = 0; d < 8; d++)
++    {
++        var _ch = _chains[d];
++        for (var c = 0; c < array_length(_ch); c++)
++        {
++            var _k = _ch[c][0];
++            var _t = _ch[c][1];
++            if (_t == 1 && !_flip) { continue; }
++            var _src = _walk;
++            if (_k != 1) { _src = _e[_k - ANIM_DIR0 + _base]; }
++            if (!is_undefined(_src))
++            {
++                var _fl = false;
++                if (_t == 1) { _fl = true; }
++                if (_t == 2 && _flip) { _fl = true; }
++                if (_src.flip) { _fl = !_fl; }
++                _dirs[d] = { frames : _src.frames, rate : _src.rate, mode : _src.mode, flip : _fl };
++                break;
++            }
++        }
++    }
++    for (var d2 = 0; d2 < 8; d2++)
++    {
++        if (is_undefined(_dirs[d2]))
++        {
++            if (!is_undefined(_dirs[2])) { _dirs[d2] = _dirs[2]; }
++            else if (!is_undefined(_dirs[6])) { _dirs[d2] = _dirs[6]; }
++        }
++    }
++    return _dirs;
++}
++
++/// What the game plays: undefined (no frames here), else 4 (12 with directions, 21 with Fire)
++/// x { frames, rate, mode, flip } with empty animations filled in from the others
++/// (flip = turned round; mode 3 = stand facing the way it last moved)
++function anim_plan(_it)
++{
++    var _h = _it.h;
++    if (!anims_used(_h)) { return undefined; }
++    var _e = [];
++    for (var i = 0; i < ANIM_COUNT; i++)
++    {
++        var _src = _h.anims[i];
++        if (array_length(_src.frames) > 0) { array_push(_e, { frames : _src.frames, rate : clamp(_src.rate, 2, 30), mode : clamp(_src.mode, 0, 2), flip : false }); }
++        else { array_push(_e, undefined); }
++    }
++    var _idle = _e[0];
++    var _walk = _e[1];
++    var _jump = _e[2];
++    var _fall = _e[3];
++    var _dirs = undefined;
++    var _one = { frames : [_it.sprite], rate : 8, mode : 0, flip : false };
++    if (anims_dirs_on(_h))
++    {
++        var _w0 = _walk;
++        if (is_undefined(_w0)) { _w0 = _idle; }
++        _dirs = anim_resolve_dirs(_e, ANIM_DIR0, _w0, _h.anim_flip);
++        for (var d = 0; d < 8; d++)
++        {
++            if (is_undefined(_dirs[d])) { _dirs[d] = _one; }
++        }
++        if (is_undefined(_idle)) { _idle = { frames : [_it.sprite], rate : 8, mode : 3, flip : false }; }
++        if (is_undefined(_walk)) { _walk = _dirs[2]; }
++    }
++    else
++    {
++        if (is_undefined(_idle))
++        {
++            if (!is_undefined(_walk)) { _idle = _walk; }
++            else { _idle = _one; }
++        }
++        if (is_undefined(_walk)) { _walk = _idle; }
++    }
++    if (is_undefined(_jump)) { _jump = _walk; }
++    if (is_undefined(_fall)) { _fall = _jump; }
++    var _out = [_idle, _walk, _jump, _fall];
++    if (anims_fire_used(_it))
++    {
++        if (is_undefined(_dirs)) { _dirs = array_create(8, _walk); }
++        var _fstand = _e[ANIM_FIRE0];
++        var _fd = anim_resolve_dirs(_e, ANIM_FIRE0 + 1, _fstand, _h.anim_flip);
++        if (is_undefined(_fstand))
++        {
++            if (!is_undefined(_fd[2])) { _fstand = _fd[2]; }
++            else if (!is_undefined(_fd[6])) { _fstand = _fd[6]; }
++            else { _fstand = _idle; }
++        }
++        for (var d3 = 0; d3 < 8; d3++)
++        {
++            if (is_undefined(_fd[d3])) { _fd[d3] = _fstand; }
++        }
++        for (var d4 = 0; d4 < 8; d4++) { array_push(_out, _dirs[d4]); }
++        array_push(_out, _fstand);
++        for (var d5 = 0; d5 < 8; d5++) { array_push(_out, _fd[d5]); }
++        return _out;
++    }
++    if (!is_undefined(_dirs))
++    {
++        for (var d6 = 0; d6 < 8; d6++) { array_push(_out, _dirs[d6]); }
++    }
++    return _out;
++}
++
++/// Frame number 0..n-1 of an animation _ticks 50ths of a second after it started
++function anim_frame_at(_e, _ticks)
++{
++    var _n = array_length(_e.frames);
++    if (_n <= 1) { return 0; }
++    var _steps = floor(_ticks / max(2, _e.rate));
++    if (_e.mode == 1) { return min(_steps, _n - 1); }
++    if (_e.mode == 2)
++    {
++        var _per = 2 * _n - 2;
++        var _m = _steps mod _per;
++        if (_m >= _n) { return _per - _m; }
++        return _m;
++    }
++    return _steps mod _n;
++}
++
++/// The sprite a cast member shows in lists right now (its Idle, or its sprite)
++function anim_cast_preview_sprite(_it)
++{
++    var _plan = anim_plan(_it);
++    if (is_undefined(_plan)) { return _it.sprite; }
++    var _e = _plan[0];
++    if (_e.mode == 3) { _e = _plan[ANIM_DIR0 + 2]; }
++    return _e.frames[anim_frame_at(_e, current_time div 20)];
++}
++
++// ---------------------------------------------------------------------------
++// Mirrored sprites
++// ---------------------------------------------------------------------------
++
++/// The 63 bytes of sprite _s turned round (left to right)
++function sprite_mirror_bytes(_s)
++{
++    var _m = sprite_new("m");
++    _m.mc = _s.mc;
++    for (var r = 0; r < 21; r++)
++    {
++        for (var c = 0; c < 24; c++) { _m.hi[r * 24 + c] = _s.hi[r * 24 + 23 - c]; }
++        for (var c2 = 0; c2 < 12; c2++) { _m.mcp[r * 12 + c2] = _s.mcp[r * 12 + 11 - c2]; }
++    }
++    return sprite_encode(_m);
++}
++
++/// Draws sprite _i, turned round when _flip
++function draw_sprite_c64_flip(_i, _x, _y, _scale, _flip, _colour, _alpha)
++{
++    if (!_flip)
++    {
++        draw_sprite_c64(_i, _x, _y, _scale, _colour, _alpha);
++        return;
++    }
++    if (_i < 0 || _i >= SPR_COUNT) { return; }
++    spr_cache_update(_i);
++    gpu_set_texfilter(false);
++    var _x2 = _x + 24 * _scale;
++    draw_surface_ext(spr_surf_sh[_i], _x2, _y, -_scale, _scale, 0, c64col(proj.mc1), _alpha);
++    draw_surface_ext(spr_surf_sh2[_i], _x2, _y, -_scale, _scale, 0, c64col(proj.mc2), _alpha);
++    draw_surface_ext(spr_surf_own[_i], _x2, _y, -_scale, _scale, 0, c64col(_colour), _alpha);
++    gpu_set_texfilter(true);
++}
++
++// ---------------------------------------------------------------------------
++// What the game gets: tables built from the plans
++// ---------------------------------------------------------------------------
++
++/// { on, members[] ({ on, n, flags, row[] }), entries[] ({ frames[] (sprite slots, 32+ =
++/// mirrored), rate, mode }), mirrors[] (the slot each mirrored copy is of), warnings[] }.
++/// A member's row maps its animation number (0..n-1, then n..n+3 = Idle .. Fall turned round
++/// for facing left) to an entry; flags: 1 Fire, 2 directions, 4 turn round to face left.
++function anim_build(_p)
++{
++    var _b = { on : false, members : [], entries : [], mirrors : [], warnings : [] };
++    var _cast = anim_cast(_p);
++    var _ekeys = {};
++    var _mirror_of = {};
++    var _full = false;
++    for (var c = 0; c < array_length(_cast); c++)
++    {
++        var _it = _cast[c];
++        var _plan = anim_plan(_it);
++        var _m = { on : false, n : 0, flags : 0, row : [] };
++        if (is_undefined(_plan))
++        {
++            array_push(_b.members, _m);
++            continue;
++        }
++        _b.on = true;
++        _m.on = true;
++        _m.n = array_length(_plan);
++        if (anims_fire_used(_it)) { _m.flags |= 1; }
++        if (anims_dirs_on(_it.h)) { _m.flags |= 2; }
++        var _basic_flip = (_it.h.anim_flip && !anims_dirs_on(_it.h));
++        if (_basic_flip) { _m.flags |= 4; }
++        var _list = [];
++        for (var k = 0; k < _m.n; k++) { array_push(_list, [_plan[k], _plan[k].flip]); }
++        if (_basic_flip)
++        {
++            for (var k2 = 0; k2 < 4; k2++) { array_push(_list, [_plan[k2], !_plan[k2].flip]); }
++        }
++        for (var q = 0; q < array_length(_list); q++)
++        {
++            var _pe = _list[q][0];
++            var _fl = _list[q][1];
++            var _fr = [];
++            for (var f = 0; f < array_length(_pe.frames); f++)
++            {
++                var _slot = clamp(_pe.frames[f], 0, SPR_COUNT - 1);
++                if (_fl)
++                {
++                    var _mk = string(_slot);
++                    var _mi = _mirror_of[$ _mk];
++                    if (is_undefined(_mi))
++                    {
++                        if (array_length(_b.mirrors) < ANIM_MIRRORS)
++                        {
++                            _mi = SPR_COUNT + array_length(_b.mirrors);
++                            array_push(_b.mirrors, _slot);
++                            _mirror_of[$ _mk] = _mi;
++                        }
++                        else
++                        {
++                            _mi = _slot;
++                            if (!_full) { array_push(_b.warnings, "More than " + string(ANIM_MIRRORS) + " sprites are turned round - the rest face the way they are drawn. Draw some left-facing frames instead."); }
++                            _full = true;
++                        }
++                    }
++                    _slot = _mi;
++                }
++                array_push(_fr, _slot);
++            }
++            var _ent = { frames : _fr, rate : clamp(_pe.rate, 2, 30), mode : clamp(_pe.mode, 0, 3) };
++            var _key = json_stringify(_ent);
++            var _id = _ekeys[$ _key];
++            if (is_undefined(_id))
++            {
++                _id = array_length(_b.entries);
++                array_push(_b.entries, _ent);
++                _ekeys[$ _key] = _id;
++            }
++            array_push(_m.row, _id);
++        }
++        array_push(_b.members, _m);
++    }
++    // multicolour or not, for every slot the VIC-II may be pointed at
++    _b.mc = array_create(SPR_COUNT + ANIM_MIRRORS, 0);
++    for (var sm = 0; sm < SPR_COUNT; sm++) { _b.mc[sm] = (_p.sprites[sm].mc ? 1 : 0); }
++    for (var mm = 0; mm < array_length(_b.mirrors); mm++) { _b.mc[SPR_COUNT + mm] = _b.mc[_b.mirrors[mm]]; }
++    if (array_length(_b.entries) > 255)
++    {
++        array_push(_b.warnings, "The animations are too varied for the game's tables (more than 255 different ones).");
++        _b.on = false;
++    }
++    return _b;
++}
++
++/// The mirrored sprites' data (64 bytes each, after the 32 drawn sprites)
++function anim_emit_mirrors(L, _p, _b)
++{
++    for (var i = 0; i < array_length(_b.mirrors); i++)
++    {
++        var _bytes = sprite_mirror_bytes(_p.sprites[_b.mirrors[i]]);
++        array_push(L, " .byte " + cg_join_bytes(_bytes, 0, 63) + ",0");
++    }
++}
++
++/// Pushes anim_upd, the tables and its variables onto L.
++/// anim_upd: X = the sprite's slot (0..7), A = cast member, an_dx / an_dy = how far it moved
++/// since the last frame, an_air = 0 on the ground, 1 going up, 2 coming down, an_fire != 0 =
++/// fire held. Returns carry set and A = the sprite slot to show (0..63), or carry clear when the
++/// member has no animations here. X is kept.
++function anim_emit(L, _b)
++{
++    array_push(L, "; ---------------- animations (Animate page) ----------------", "anim_start:");
++    array_push(L, "anim_upd:", " sta an_m", " tay", " lda cm_on,y", " bne au_go", " clc", " rts");
++    // a move of more than 16 pixels is a jump to a new place (a new life, a new level): not a move
++    array_push(L, "au_go:", " lda an_dx", " clc", " adc #16", " cmp #33", " bcs au_tp", " lda an_dy", " clc", " adc #16", " cmp #33", " bcc au_mv");
++    array_push(L, "au_tp:", " lda #0", " sta an_dx", " sta an_dy");
++    // which way: 3 x (dx sign + 1) + (dy sign + 1) -> direction 0..7, 255 = not moving; facing left or right
++    array_push(L, "au_mv:", " ldy #4", " lda an_dx", " beq au_x0", " bmi au_xl", " iny", " iny", " iny", " lda #0", " sta as_left,x", " beq au_x0");
++    array_push(L, "au_xl:", " dey", " dey", " dey", " lda #1", " sta as_left,x");
++    array_push(L, "au_x0:", " lda an_dy", " beq au_y0", " bmi au_yu", " iny", " bne au_y0");
++    array_push(L, "au_yu:", " dey");
++    array_push(L, "au_y0:", " lda an_dir9,y", " bmi au_st", " sta as_dir,x", " lda #1", " sta an_mv", " bne au_pk");
++    array_push(L, "au_st:", " lda #0", " sta an_mv");
++    // which animation: holding fire, in the air, moving, standing
++    array_push(L, "au_pk:", " ldy an_m", " lda cm_flags,y", " sta an_fl");
++    array_push(L, " lda an_fire", " beq au_nf", " lda an_fl", " and #1", " beq au_nf", " lda an_mv", " beq au_f0", " lda as_dir,x", " clc", " adc #13", " bne au_k");
++    array_push(L, "au_f0:", " lda #12", " bne au_k");
++    array_push(L, "au_nf:", " lda an_air", " beq au_gd", " clc", " adc #1", " bne au_k");
++    array_push(L, "au_gd:", " lda an_mv", " beq au_id", " lda an_fl", " and #2", " beq au_wk", " lda as_dir,x", " clc", " adc #4", " bne au_k");
++    array_push(L, "au_wk:", " lda #1", " bne au_k");
++    array_push(L, "au_id:", " lda #0");
++    // facing left: Idle .. Fall turned round (after the member's own animations)
++    array_push(L, "au_k:", " sta an_k", " cmp #4", " bcs au_k2", " lda an_fl", " and #4", " beq au_k2", " lda as_left,x", " beq au_k2", " lda an_k", " clc", " adc cm_n,y", " sta an_k");
++    array_push(L, "au_k2:", " lda cm_rlo,y", " sta au_mr+1", " sta au_ms+1", " lda cm_rhi,y", " sta au_mr+2", " sta au_ms+2", " ldy an_k");
++    array_push(L, "au_mr:", " lda $ffff,y", " tay", " lda #0", " sta an_fz", " lda en_mode,y", " cmp #3", " bne au_e");
++    // stand facing the way it last moved: that direction's first frame, held
++    array_push(L, " lda as_dir,x", " clc", " adc #4", " sta an_k", " tay");
++    array_push(L, "au_ms:", " lda $ffff,y", " tay", " lda #1", " sta an_fz");
++    array_push(L, "au_e:", " sty an_e", " tya", " sta as_e,x");
++    // a different animation starts from its first frame
++    array_push(L, " lda an_k", " cmp as_k,x", " bne au_nw", " lda an_m", " cmp as_m,x", " bne au_nw", " lda an_fz", " beq au_ol");
++    array_push(L, "au_nw:", " lda an_k", " sta as_k,x", " lda an_m", " sta as_m,x", " lda #0", " sta as_f,x", " sta as_t,x", " sta as_pd,x", " jmp au_out");
++    // the speed: a new frame every en_rate frames
++    array_push(L, "au_ol:", " inc as_t,x", " lda as_t,x", " cmp en_rate,y", " bcc au_out", " lda #0", " sta as_t,x", " lda en_mode,y", " beq au_lp", " cmp #1", " beq au_on");
++    // ping-pong
++    array_push(L, " lda en_cnt,y", " cmp #2", " bcc au_z", " lda as_pd,x", " bne au_bk", " inc as_f,x", " lda as_f,x", " clc", " adc #1", " cmp en_cnt,y", " bcc au_out", " lda #1", " sta as_pd,x", " bne au_out");
++    array_push(L, "au_bk:", " dec as_f,x", " bne au_out", " lda #0", " sta as_pd,x", " beq au_out");
++    array_push(L, "au_z:", " lda #0", " sta as_f,x", " beq au_out");
++    // loop
++    array_push(L, "au_lp:", " inc as_f,x", " lda as_f,x", " cmp en_cnt,y", " bcc au_out", " lda #0", " sta as_f,x", " beq au_out");
++    // once, then hold the last frame
++    array_push(L, "au_on:", " lda as_f,x", " clc", " adc #1", " cmp en_cnt,y", " bcs au_out", " inc as_f,x");
++    // the frame
++    array_push(L, "au_out:", " ldy an_e", " lda en_flo,y", " sta au_fr+1", " lda en_fhi,y", " sta au_fr+2", " ldy as_f,x");
++    array_push(L, "au_fr:", " lda $ffff,y", " sec", " rts");
++    // anim_hold (X = slot, A = member): the frame it shows now, without moving the animation on
++    // (a frame where nothing moved, like the map engine's coarse scroll frames)
++    array_push(L, "anim_hold:", " cmp as_m,x", " beq ah_0", " jmp anim_upd", "ah_0:", " tay", " lda cm_on,y", " bne ah_1", " clc", " rts", "ah_1:", " lda as_e,x", " sta an_e", " jmp au_out");
++    // tables
++    array_push(L, "an_dir9:", " .byte 7,6,5,0,255,4,1,2,3");
++    var _mcs = [];
++    for (var q = 0; q < array_length(_b.mc); q++) { array_push(_mcs, string(_b.mc[q])); }
++    array_push(L, "an_mc:", " .byte " + string_join_ext(",", _mcs));
++    var _nm = max(1, array_length(_b.members));
++    var _on = [], _fl = [], _n = [], _rl = [], _rh = [];
++    for (var m = 0; m < _nm; m++)
++    {
++        var _mm = { on : false, n : 0, flags : 0, row : [] };
++        if (m < array_length(_b.members)) { _mm = _b.members[m]; }
++        array_push(_on, string(_mm.on ? 1 : 0));
++        array_push(_fl, string(_mm.flags));
++        array_push(_n, string(_mm.n));
++        if (_mm.on)
++        {
++            array_push(_rl, "<anr_" + string(m));
++            array_push(_rh, ">anr_" + string(m));
++        }
++        else
++        {
++            array_push(_rl, "0");
++            array_push(_rh, "0");
++        }
++    }
++    array_push(L, "cm_on:", " .byte " + string_join_ext(",", _on), "cm_flags:", " .byte " + string_join_ext(",", _fl), "cm_n:", " .byte " + string_join_ext(",", _n));
++    array_push(L, "cm_rlo:", " .byte " + string_join_ext(",", _rl), "cm_rhi:", " .byte " + string_join_ext(",", _rh));
++    for (var m2 = 0; m2 < array_length(_b.members); m2++)
++    {
++        if (!_b.members[m2].on) { continue; }
++        var _row = [];
++        for (var r = 0; r < array_length(_b.members[m2].row); r++) { array_push(_row, string(_b.members[m2].row[r])); }
++        array_push(L, "anr_" + string(m2) + ":", " .byte " + string_join_ext(",", _row));
++    }
++    var _ne = max(1, array_length(_b.entries));
++    var _t = [[], [], [], [], []];
++    for (var e = 0; e < _ne; e++)
++    {
++        var _en = { frames : [0], rate : 8, mode : 0 };
++        if (e < array_length(_b.entries)) { _en = _b.entries[e]; }
++        array_push(_t[0], "<anf_" + string(e));
++        array_push(_t[1], ">anf_" + string(e));
++        array_push(_t[2], string(array_length(_en.frames)));
++        array_push(_t[3], string(_en.rate));
++        array_push(_t[4], string(_en.mode));
++    }
++    var _tn = ["en_flo", "en_fhi", "en_cnt", "en_rate", "en_mode"];
++    for (var tt = 0; tt < 5; tt++) { array_push(L, _tn[tt] + ":", " .byte " + string_join_ext(",", _t[tt])); }
++    for (var e2 = 0; e2 < _ne; e2++)
++    {
++        var _fr = [0];
++        if (e2 < array_length(_b.entries)) { _fr = _b.entries[e2].frames; }
++        var _fs = [];
++        for (var f = 0; f < array_length(_fr); f++) { array_push(_fs, string(_fr[f])); }
++        array_push(L, "anf_" + string(e2) + ":", " .byte " + string_join_ext(",", _fs));
++    }
++    // per sprite: animation number and member playing, frame, tick, ping-pong way, last direction, facing left, last position
++    var _sv = ["as_k", "as_m", "as_e", "as_f", "as_t", "as_pd", "as_dir", "as_left", "as_px", "as_py"];
++    for (var v = 0; v < array_length(_sv); v++) { array_push(L, _sv[v] + ":", " .fill 8,0"); }
++    var _gv = ["an_m", "an_dx", "an_dy", "an_air", "an_fire", "an_mv", "an_fl", "an_k", "an_e", "an_fz"];
++    for (var v2 = 0; v2 < array_length(_gv); v2++) { array_push(L, _gv[v2] + ":", " .fill 1,0"); }
++    array_push(L, "anim_end:");
++}
++
++/// GML model of anim_upd (keep in step with anim_emit): state _st (as_* of one sprite),
++/// member _m, inputs; returns the sprite slot, or -1 when the member has no animations
++function anim_sim(_b, _st, _m, _dx, _dy, _air, _fire)
++{
++    if (_m >= array_length(_b.members) || !_b.members[_m].on) { return -1; }
++    var _mm = _b.members[_m];
++    if (_dx < -16 || _dx > 16 || _dy < -16 || _dy > 16)
++    {
++        _dx = 0;
++        _dy = 0;
++    }
++    var _y = 4;
++    if (_dx > 0) { _y += 3; _st.left = 0; }
++    if (_dx < 0) { _y -= 3; _st.left = 1; }
++    if (_dy > 0) { _y += 1; }
++    if (_dy < 0) { _y -= 1; }
++    var _d9 = [7, 6, 5, 0, 255, 4, 1, 2, 3];
++    var _mv = 0;
++    if (_d9[_y] != 255)
++    {
++        _st.dir = _d9[_y];
++        _mv = 1;
++    }
++    var _k = 0;
++    if (_fire && (_mm.flags & 1)) { _k = (_mv ? 13 + _st.dir : 12); }
++    else if (_air != 0) { _k = _air + 1; }
++    else if (_mv) { _k = ((_mm.flags & 2) ? 4 + _st.dir : 1); }
++    if (_k < 4 && (_mm.flags & 4) && _st.left) { _k += _mm.n; }
++    var _e = _mm.row[_k];
++    var _fz = 0;
++    if (_b.entries[_e].mode == 3)
++    {
++        _k = 4 + _st.dir;
++        _e = _mm.row[_k];
++        _fz = 1;
++    }
++    var _en = _b.entries[_e];
++    var _cnt = array_length(_en.frames);
++    if (_k != _st.k || _m != _st.m || _fz)
++    {
++        _st.k = _k;
++        _st.m = _m;
++        _st.f = 0;
++        _st.t = 0;
++        _st.pd = 0;
++    }
++    else
++    {
++        _st.t = (_st.t + 1) & 255;
++        if (_st.t >= _en.rate)
++        {
++            _st.t = 0;
++            if (_en.mode == 0)
++            {
++                _st.f += 1;
++                if (_st.f >= _cnt) { _st.f = 0; }
++            }
++            else if (_en.mode == 1)
++            {
++                if (_st.f + 1 < _cnt) { _st.f += 1; }
++            }
++            else
++            {
++                if (_cnt < 2) { _st.f = 0; }
++                else if (_st.pd == 0)
++                {
++                    _st.f += 1;
++                    if (_st.f + 1 >= _cnt) { _st.pd = 1; }
++                }
++                else
++                {
++                    _st.f -= 1;
++                    if (_st.f == 0) { _st.pd = 0; }
++                }
++            }
++        }
++    }
++    return _en.frames[_st.f];
++}
+diff --git a/C64NoCode/scripts/scr_anim/scr_anim.yy b/C64NoCode/scripts/scr_anim/scr_anim.yy
+new file mode 100644
+index 0000000..b71e32c
+--- /dev/null
++++ b/C64NoCode/scripts/scr_anim/scr_anim.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_anim",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_anim",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_codegen/scr_codegen.gml b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+index de1fad4..7459f34 100644
+--- a/C64NoCode/scripts/scr_codegen/scr_codegen.gml
++++ b/C64NoCode/scripts/scr_codegen/scr_codegen.gml
+@@ -160,6 +160,8 @@ function codegen_project(_p)
+     }
+     if (na == 0) { array_push(_warn, "There are no actors yet - the game will just show your screen."); }
+     if (_player < 0 && na > 0) { array_push(_warn, "No actor is set as Player, so the joystick will not move anything."); }
++    var _ab = anim_build(_p);
++    for (var aw = 0; aw < array_length(_ab.warnings); aw++) { array_push(_warn, _ab.warnings[aw]); }
+     var _chase_target = _player;
+     if (_chase_target < 0) { _chase_target = 0; }
+ 
+@@ -382,10 +384,20 @@ function codegen_project(_p)
+         array_push(L, " lda ax_hi+" + qs, " beq ph_" + qs, " lda tmp", " ora #" + string(1 << q), " sta tmp", "ph_" + qs + ":");
+         array_push(L, " lda avis+" + qs, " beq pv_" + qs, " lda tmp2", " ora #" + string(1 << q), " sta tmp2", "pv_" + qs + ":");
+     }
+-    // animated sprites: pointer = base + ((acnt >> speed) & mask)
++    // animated sprites: pointer = base + ((acnt >> speed) & mask) - or the Animate page's
++    // animations: anim_upd works out which way the actor moved and picks the frame
+     for (var an = 0; an < na; an++)
+     {
+         var _asp = _p.sprites[clamp(_acts[an].sprite, 0, SPR_COUNT - 1)];
++        if (an < array_length(_ab.members) && _ab.members[an].on)
++        {
++            var _as = string(an);
++            array_push(L, " lda ax_lo+" + _as, " sec", " sbc as_px+" + _as, " sta an_dx", " lda ax_lo+" + _as, " sta as_px+" + _as);
++            array_push(L, " lda ay+" + _as, " sec", " sbc as_py+" + _as, " sta an_dy", " lda ay+" + _as, " sta as_py+" + _as, " lda #0", " sta an_air");
++            if (_acts[an].role == 0) { array_push(L, " lda joy", " and #16"); }
++            array_push(L, " sta an_fire", " ldx #" + _as, " lda #" + _as, " jsr anim_upd", " tay", " lda an_mc,y", " beq amc_" + _as, " lda #" + string(1 << an), "amc_" + _as + ":", " sta an_fl", " lda $d01c", " and #" + string(255 - (1 << an)), " ora an_fl", " sta $d01c", " tya", " clc", " adc #spr_data/64", " sta $07f8+" + _as);
++            continue;
++        }
+         if (_asp.frames > 1)
+         {
+             var _mask = 1;
+@@ -492,6 +504,9 @@ function codegen_project(_p)
+         var _bytes = sprite_encode(_p.sprites[sp]);
+         array_push(L, " .byte " + cg_join_bytes(_bytes, 0, 63) + ",0");
+     }
++    // sprites turned round for the Animate page (slots 32 on)
++    anim_emit_mirrors(L, _p, _ab);
++    array_push(L, "spr_end:");
+     array_push(L, "scr_data:");
+     for (var sr = 0; sr < 25; sr++) { array_push(L, " .byte " + cg_join_bytes(_p.chars, sr * 40, 40)); }
+     array_push(L, "col_data:");
+@@ -500,6 +515,7 @@ function codegen_project(_p)
+     music_emit(L, _p);
+     digi_emit(L, _p);
+     patch_emit(L, _p);
++    if (_ab.on) { anim_emit(L, _ab); }
+ 
+     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
+ }
+@@ -518,11 +534,11 @@ function build_prg(_path)
+         return false;
+     }
+     var _end = _res.org + array_length(_res.bytes);
+-    var _spr = _res.labels[$ "spr_data"];
+-    if (_spr + SPR_COUNT * 64 > 16384)
++    var _spr_end = _res.labels[$ "spr_end"];
++    if (_spr_end > 16384)
+     {
+         build_ok = false;
+-        build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr + SPR_COUNT * 64)) + ", past $4000 where the VIC-II can see them. Use fewer rules or switch a group off.";
++        build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr_end)) + ", past $4000 where the VIC-II can see them. Use fewer rules, switch a group off, or turn fewer sprites round on the Animate page.";
+         return false;
+     }
+     if (_end > C64_BASIC_END)
+@@ -543,7 +559,7 @@ function build_prg(_path)
+     build_ok = true;
+     build_size = array_length(_res.bytes) + 2;
+     build_end = _end;
+-    build_spr = _spr;
++    build_spr = _res.labels[$ "spr_data"];
+     build_msg = "Built " + filename_name(_path) + " - " + string(build_size) + " bytes ($0801-$" + string_upper(dec_to_hex(_end - 1)) + ")";
+     return true;
+ }
+diff --git a/C64NoCode/scripts/scr_codeview/scr_codeview.gml b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+index 58db292..290cd3e 100644
+--- a/C64NoCode/scripts/scr_codeview/scr_codeview.gml
++++ b/C64NoCode/scripts/scr_codeview/scr_codeview.gml
+@@ -75,15 +75,18 @@ function live_measure()
+         live_seg_sound += _dgn;
+         var _ms = live_label(_lab, "mus_start", _org);
+         live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;
++        // the Animate page's player and tables (after the data) count as code
++        var _as = live_label(_lab, "anim_start", _org);
++        var _an = live_label(_lab, "anim_end", _as) - _as;
+         if (proj.game_type == 1)
+         {
+             // engine and code, then the level data (tiles, enemies, maps - the sound tables are in it), then sprites + charset
+             var _ld = live_label(_lab, "level_data", _org);
+             var _ds = live_label(_lab, "spr_src", live_end);
+-            live_seg_code = _ld - _org;
++            live_seg_code = _ld - _org + _an;
+             live_seg_gap = 0;
+             live_seg_sprites = live_end - _ds;
+-            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music);
++            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music - _an);
+             live_limit = 32768;
+             live_spr_end = 0;
+         }
+@@ -93,8 +96,9 @@ function live_measure()
+             var _sp = live_label(_lab, "spr_data", _ve);
+             live_seg_code = _ve - _org - (live_seg_sound - _dgn);
+             live_seg_gap = _sp - _ve;
+-            live_seg_sprites = SPR_COUNT * 64;
+-            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn);
++            live_seg_sprites = live_label(_lab, "spr_end", _sp + SPR_COUNT * 64) - _sp;
++            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn - _an);
++            live_seg_code += _an;
+             live_limit = C64_BASIC_END;
+             live_spr_end = _sp + live_seg_sprites;
+         }
+diff --git a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+index 7ba595d..bf7a113 100644
+--- a/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
++++ b/C64NoCode/scripts/scr_engine_gen/scr_engine_gen.gml
+@@ -54,7 +54,9 @@ function eng_settings_new()
+         pspeed : 2, jumpv : 6, grav : 0, maxfall : 5, jump_up : false,
+         weapon : 1, bspeed : 6, firedir : 2, cooldown : 10,
+         pspr : 0, pcol : 7, bspr : 1, bcol : 1, ebspr : 2, ebcol : 10, lives : 3,
+-        sfx_shoot : 1, sfx_hit : 2, sfx_die : 6, sfx_collect : 0, sfx_jump : 3, sfx_exit : 5
++        sfx_shoot : 1, sfx_hit : 2, sfx_die : 6, sfx_collect : 0, sfx_jump : 3, sfx_exit : 5,
++        // the Animate page: the player, its shot and the enemies' shot (enemy types hold their own)
++        anim_p : anim_holder_new(), anim_b : anim_holder_new(), anim_eb : anim_holder_new()
+     };
+ }
+ 
+@@ -65,7 +67,7 @@ function tile_new(_name)
+ 
+ function enemy_new(_name)
+ {
+-    return { name : _name, spr : 3, col : 2, move : 1, spd : 1, dir : 6, hp : 1, score : 10, fire : 0, rate : 60, fdir : 6 };
++    return { name : _name, spr : 3, col : 2, move : 1, spd : 1, dir : 6, hp : 1, score : 10, fire : 0, rate : 60, fdir : 6, anims : anims_new(), anim_flip : false };
+ }
+ 
+ function level_new(_name, _w, _h)
+@@ -138,6 +140,8 @@ function eng_cycle_budget(_e)
+             break;
+         }
+     }
++    var _ab = anim_build(proj);
++    if (_ab.on) { _logic += 8 * 300; }
+     var _frame = 18200;
+     var _full = 9000;
+     if (_e.kind == KIND_CAVE) { _full = 11000; }
+@@ -193,6 +197,10 @@ function engine_codegen(_p)
+     if (_e.mc) { _mcbit = 16; }
+     var _cols = 8;
+     if (_e.cols38 && _sh == 1) { _cols = 0; }
++    var _ab = anim_build(_p);
++    for (var aw = 0; aw < array_length(_ab.warnings); aw++) { array_push(_warn, _ab.warnings[aw]); }
++    var _anim_on = 0;
++    if (_ab.on) { _anim_on = 1; }
+ 
+     array_push(L, "; ===== " + _p.name + " - generated by C64 No-Code Studio =====");
+     array_push(L, "* = $0801");
+@@ -210,7 +218,7 @@ function engine_codegen(_p)
+         ["BSPEED", clamp(_e.bspeed, 2, 8)], ["FIREDIR", clamp(_e.firedir, 0, 7)], ["CAVE_ROWS", 3],
+         ["PSPR", clamp(_e.pspr, 0, 31)], ["PCOL", _e.pcol], ["BSPR", clamp(_e.bspr, 0, 31)], ["BCOL", _e.bcol],
+         ["EBSPR", clamp(_e.ebspr, 0, 31)], ["EBCOL", _e.ebcol], ["LIVES", clamp(_e.lives, 1, 9)],
+-        ["NLEVELS", max(1, min(8, array_length(_p.levels)))], ["SPR_PAGES", 8],
++        ["NLEVELS", max(1, min(8, array_length(_p.levels)))], ["SPR_PAGES", ceil((32 + array_length(_ab.mirrors)) / 4)], ["ANIM_ON", _anim_on],
+         ["SFX_SHOOT", _e.sfx_shoot], ["SFX_HIT", _e.sfx_hit], ["SFX_DIE", _e.sfx_die], ["SFX_COLLECT", _e.sfx_collect],
+         ["SFX_JUMP", _e.sfx_jump], ["SFX_EXIT", _e.sfx_exit]
+     ];
+@@ -440,13 +448,37 @@ function engine_codegen(_p)
+     digi_emit(L, _p);
+     patch_emit(L, _p);
+ 
+-    // sprite and charset blobs (copied to $E000 / $F000 at start)
++    // animations: which cast member a sprite slot is, and how it moved (anim_upd does the rest)
++    if (_ab.on)
++    {
++        array_push(L, "anim_ent:", " lda e_kind,x", " cmp #K_PLAYER", " bne ae_1", " lda #0", " beq ae_m");
++        array_push(L, "ae_1:", " cmp #K_PBUL", " bne ae_2", " lda #1", " bne ae_m");
++        array_push(L, "ae_2:", " cmp #K_EBUL", " bne ae_3", " lda #2", " bne ae_m");
++        array_push(L, "ae_3:", " cmp #K_ENEMY", " beq ae_4", " clc", " rts");
++        array_push(L, "ae_4:", " lda e_type,x", " clc", " adc #3");
++        // coarse scroll frames move nothing but the player: everyone holds their frame
++        array_push(L, "ae_m:", " ldy coarse", " beq ae_go", " jmp anim_hold");
++        array_push(L, "ae_go:", " pha", " lda e_xlo,x", " sec", " sbc as_px,x", " sta an_dx", " lda e_xlo,x", " sta as_px,x");
++        array_push(L, " lda e_ylo,x", " sec", " sbc as_py,x", " sta an_dy", " lda e_ylo,x", " sta as_py,x", " lda #0", " sta an_air", " sta an_fire");
++        array_push(L, " cpx #0", " bne ae_c");
++        if (_e.kind == KIND_PLAT)
++        {
++            // a platform player in the air: going up (Jump) or coming down (Fall)
++            array_push(L, " lda e_vy", " beq ae_f", " bmi ae_j", " lda #2", " bne ae_a", "ae_j:", " lda #1", "ae_a:", " sta an_air");
++        }
++        array_push(L, "ae_f:", " lda joy", " and #16", " sta an_fire");
++        array_push(L, "ae_c:", " pla", " jmp anim_upd");
++        anim_emit(L, _ab);
++    }
++
++    // sprite and charset blobs (copied to $E000 / $F000 at start; mirrored copies after the 32 sprites)
+     array_push(L, "spr_src:");
+     for (var sb = 0; sb < 32; sb++)
+     {
+         var _bytes = sprite_encode(_p.sprites[min(sb, array_length(_p.sprites) - 1)]);
+         array_push(L, " .byte " + cg_join_bytes(_bytes, 0, 63) + ",0");
+     }
++    anim_emit_mirrors(L, _p, _ab);
+     array_push(L, "chr_src:");
+     for (var cb = 0; cb < 2048; cb += 64)
+     {
+diff --git a/C64NoCode/scripts/scr_project/scr_project.gml b/C64NoCode/scripts/scr_project/scr_project.gml
+index 6556373..c04d38e 100644
+--- a/C64NoCode/scripts/scr_project/scr_project.gml
++++ b/C64NoCode/scripts/scr_project/scr_project.gml
+@@ -46,7 +46,9 @@ function actor_new(_name)
+         y : 140,
+         visible : true,
+         start_left : false,
+-        start_up : false
++        start_up : false,
++        anims : anims_new(),        // the Animate page (scr_anim)
++        anim_flip : false
+     };
+ }
+ 
+@@ -357,6 +359,7 @@ function project_from_loaded(_raw)
+     }
+     if (array_length(_ens) == 0) { _ens = [enemy_new("Enemy 1")]; }
+     _p.enemies = _ens;
++    anim_project_fix(_p);
+     var _lvls = [];
+     var _ll = _raw[$ "levels"];
+     if (is_array(_ll))
+diff --git a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+index 85fa301..9f6a902 100644
+--- a/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
++++ b/C64NoCode/scripts/scr_tutorial/scr_tutorial.gml
+@@ -67,6 +67,11 @@ function tut_init()
+         tut_step(WS_SOUND, "snd_kind_2", "Patches", "Patch is ADAM's patch synth on the real chip: three oscillators with sync and ring modulation, the filter with its own envelope, LFOs and a modulation matrix. Start from a preset, or press Randomise and Mutate until something great happens."),
+         tut_step(WS_SOUND, "snd_preview", "Listen", "Play the sound any time (or press Space). Rules on the Logic page choose when your game plays it."),
+         // ---------- MUSIC ----------
++        tut_step(WS_ANIMATE, "", "Animate", "Animations for your cast, played by a small routine in the game that watches which way each sprite moves. Pick someone on the left."),
++        tut_step(WS_ANIMATE, "anim_mid_0", "The joystick", "The middle plays while it stands still, the 8 slots round it while it moves that way. Leave directions empty and they borrow from Walk or from each other."),
++        tut_step(WS_ANIMATE, "anim_bank_0", "Pick the frames", "Click a frame slot, then sprites in the bank - each click adds a frame. Double-click a sprite to draw it."),
++        tut_step(WS_ANIMATE, "anim_flip", "Turn to face left", "Draw facing right and the game turns the frames round when it moves left. The VIC-II can't flip sprites, so each one turned round becomes a mirrored copy - up to 32."),
++        tut_step(WS_ANIMATE, "anim_test", "Test it", "Drive the preview with the arrow keys or a gamepad, as the joystick will in the game."),
+         tut_step(WS_MUSIC, "", "Music", "Songs for the SID chip's 3 voices, played by a small music driver inside your game. Sound effects borrow voice 1 or 2 while they play, then the music has the voice back."),
+         tut_step(WS_MUSIC, "mus_cat_0", "The loop library", "Ready-made one-bar loops: drums, bass, chords, leads and effects. Click one to hear it - it becomes your brush."),
+         tut_step(WS_MUSIC, "mus_grid", "Paint the song", "Each row is a SID voice, each box a bar. Click empty bars to paint your loop, right-click to rub out, double-click a loop to change its notes in the step editor: drag a note's circle onto a later note to bend into it, and use the effect row for slides, vibrato and volume."),
+diff --git a/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml
+new file mode 100644
+index 0000000..7b907eb
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.gml
+@@ -0,0 +1,919 @@
++/// C64 NO-CODE STUDIO - Animate page (ADAM's): Idle, Walk, Jump and Fall animations of up to
++/// 16 frames for each cast member, or the 8 joystick directions, and Fire animations for the
++/// player - with a test mode driven by the arrow keys, WASD or a gamepad.
++/// Data, plans and the 6502 player are in scr_anim.
++
++
++/// The cast member the page is on
++function anim_cur_item()
++{
++    var _cast = anim_cast(proj);
++    if (array_length(_cast) == 0) { return undefined; }
++    anim_cast_sel = clamp(anim_cast_sel, 0, array_length(_cast) - 1);
++    return _cast[anim_cast_sel];
++}
++
++/// Marks an undo step; the first change starts from the member's Sprites page animation
++function anim_begin_edit(_it, _tag)
++{
++    undo_mark(_tag);
++    anim_seed_from_legacy(_it);
++    anim_t0 = current_time;
++}
++
++/// True on the second click of a double-click on control _id (within 0.4 s)
++function anim_dbl(_id)
++{
++    if (anim_click_id == _id && current_time - anim_click_time < 400)
++    {
++        anim_click_id = "";
++        return true;
++    }
++    anim_click_id = _id;
++    anim_click_time = current_time;
++    return false;
++}
++
++/// Opens sprite _i on the Sprites page to draw it
++function anim_edit_sprite(_i)
++{
++    spr_sel = clamp(_i, 0, SPR_COUNT - 1);
++    ws_set(WS_SPRITES);
++}
++
++/// Ticks (machine frames) since _t0
++function anim_ticks(_t0)
++{
++    return floor((current_time - _t0) * sid_fps() / 1000);
++}
++
++/// The background colour sprites are seen on
++function anim_bg()
++{
++    if (proj.game_type == 1) { return c64col(proj.eng.bg); }
++    return c64col(proj.background);
++}
++
++/// Input for test mode: keyboard (arrows / WASD, fire Space / Ctrl) or any gamepad
++/// (stick / d-pad, fire A). Returns [dx, dy, fire].
++function anim_test_input(_source)
++{
++    var _dx = 0;
++    var _dy = 0;
++    var _fire = false;
++    if (_source == 0 && ui_focus == "")
++    {
++        if (keyboard_check(vk_space) || keyboard_check(vk_control)) { _fire = true; }
++        if (keyboard_check(vk_left) || keyboard_check(ord("A"))) { _dx -= 1; }
++        if (keyboard_check(vk_right) || keyboard_check(ord("D"))) { _dx += 1; }
++        if (keyboard_check(vk_up) || keyboard_check(ord("W"))) { _dy -= 1; }
++        if (keyboard_check(vk_down) || keyboard_check(ord("S"))) { _dy += 1; }
++    }
++    if (_source == 1)
++    {
++        for (var g = 0; g < 12; g++)
++        {
++            if (!gamepad_is_connected(g)) { continue; }
++            var _ax = gamepad_axis_value(g, gp_axislh);
++            var _ay = gamepad_axis_value(g, gp_axislv);
++            var _pad_x = 0;
++            var _pad_y = 0;
++            if (gamepad_button_check(g, gp_padl)) { _pad_x -= 1; }
++            if (gamepad_button_check(g, gp_padr)) { _pad_x += 1; }
++            if (gamepad_button_check(g, gp_padu)) { _pad_y -= 1; }
++            if (gamepad_button_check(g, gp_padd)) { _pad_y += 1; }
++            if (_pad_x == 0 && _pad_y == 0)
++            {
++                if (abs(_ax) > 0.4) { _pad_x = sign(_ax); }
++                if (abs(_ay) > 0.4) { _pad_y = sign(_ay); }
++            }
++            var _pad_fire = gamepad_button_check(g, gp_face1);
++            if (_pad_x != 0 || _pad_y != 0 || _pad_fire)
++            {
++                _dx = _pad_x;
++                _dy = _pad_y;
++                _fire = _pad_fire;
++                break;
++            }
++        }
++    }
++    return [clamp(_dx, -1, 1), clamp(_dy, -1, 1), _fire];
++}
++
++/// Direction 0..7 (N NE E SE S SW W NW) of a move
++function anim_dir_of(_dx, _dy)
++{
++    if (_dy < 0)
++    {
++        if (_dx < 0) { return 7; }
++        if (_dx > 0) { return 1; }
++        return 0;
++    }
++    if (_dy > 0)
++    {
++        if (_dx < 0) { return 5; }
++        if (_dx > 0) { return 3; }
++        return 4;
++    }
++    if (_dx < 0) { return 6; }
++    if (_dx > 0) { return 2; }
++    return 0;
++}
++
++/// Draws plan entry _k playing live in a square _w wide. A direction without an entry
++/// of its own plays Walk, as the game does.
++function anim_slot_preview(_plan, _k, _x, _y, _w, _col, _alpha, _ticks, _face_dir, _replay_once)
++{
++    if (is_undefined(_plan)) { return; }
++    var _kk = _k;
++    if (_kk >= array_length(_plan))
++    {
++        if (_kk >= ANIM_FIRE0) { return; }
++        _kk = 1;
++    }
++    var _e = _plan[_kk];
++    if (_e.mode == 3 && array_length(_plan) > ANIM_DIR0 + _face_dir)
++    {
++        _e = _plan[ANIM_DIR0 + _face_dir];
++        _ticks = 0;
++    }
++    anim_strip_preview(_e.frames, _e.rate, _e.mode, _e.flip, _x, _y, _w, _col, _alpha, _ticks, _replay_once);
++}
++
++/// Draws frames _frames playing live (rate, mode, turned round) in a square _w wide.
++/// Once replays after a short pause, so a preview never stops for good.
++function anim_strip_preview(_frames, _rate, _mode, _flip, _x, _y, _w, _col, _alpha, _ticks, _replay_once)
++{
++    var _n = array_length(_frames);
++    if (_n == 0) { return; }
++    var _md = _mode;
++    if (_md == 3) { _md = 0; }
++    if (_md == 1 && _replay_once) { _ticks = _ticks mod (_n * max(2, _rate) + 30); }
++    var _fi = anim_frame_at({ frames : _frames, rate : _rate, mode : _md }, _ticks);
++    var _si = clamp(_frames[_fi], 0, SPR_COUNT - 1);
++    var _sc = (_w - 8) / 24;
++    draw_sprite_c64_flip(_si, _x + (_w - 24 * _sc) / 2, _y + (_w - 21 * _sc) / 2, _sc, _flip, _col, _alpha);
++}
++
++/// Grid cell (-1..1, -1..1) of direction 0..7
++function anim_dir_cell(_d)
++{
++    var _gx = [0, 1, 1, 1, 0, -1, -1, -1];
++    var _gy = [-1, -1, 0, 1, 1, 1, 0, -1];
++    return [_gx[_d], _gy[_d]];
++}
++
++/// Copies an animation into entry _k of the member on the page (a drop from the library or another slot)
++function anim_drop_into(_it, _k, _frames, _rate, _mode)
++{
++    if (_k < 0 || _k >= ANIM_COUNT) { return; }
++    anim_begin_edit(_it, "animdrop" + string(current_time));
++    var _fr = [];
++    for (var f = 0; f < min(array_length(_frames), ANIM_FRAMES); f++) { array_push(_fr, _frames[f]); }
++    var _m = _mode;
++    if (_m == 3) { _m = 0; }
++    _it.h.anims[_k] = { frames : _fr, rate : clamp(_rate, 2, 30), mode : clamp(_m, 0, 2) };
++    anim_sel = _k;
++    anim_slot = 0;
++    anim_t0 = current_time;
++    var _ln = anim_long_names();
++    toast(_ln[_k] + ": " + string(array_length(_fr)) + " frames dropped in", 0);
++}
++
++/// Starts dragging an animation once the mouse has moved a little with the button held;
++/// _src = the joystick slot it came from (-1 = library)
++function anim_drag_arm(_frames, _rate, _mode, _flip, _col, _label, _src)
++{
++    anim_drag_armed = true;
++    anim_drag_on = false;
++    anim_drag_x0 = ui_mx;
++    anim_drag_y0 = ui_my;
++    anim_drag_frames = _frames;
++    anim_drag_rate = _rate;
++    anim_drag_mode = _mode;
++    anim_drag_flip = _flip;
++    anim_drag_col = _col;
++    anim_drag_label = _label;
++    anim_drag_src = _src;
++}
++
++/// Marks entry _k as the drop target while an animation is dragged over it
++function anim_drop_zone(_k, _x1, _y1, _x2, _y2)
++{
++    if (!anim_drag_on || _k == anim_drag_src) { return; }
++    if (point_in_rectangle(ui_mx, ui_my, _x1, _y1, _x2, _y2))
++    {
++        anim_drop_k = _k;
++        ui_rrect_line(_x1 - 3, _y1 - 3, _x2 + 3, _y2 + 3, 10, global.TH.accent, 1, 3);
++    }
++    else
++    {
++        ui_rrect_line(_x1 - 1, _y1 - 1, _x2 + 1, _y2 + 1, 9, global.TH.accent, 0.35 + 0.25 * sin(current_time / 120), 1);
++    }
++}
++
++/// One joystick seen from above: _which 0 = Moving (Idle in the middle, the 8 directions
++/// round it), 1 = With Fire. Each slot plays its animation live; click to pick it, drag to copy it.
++function anim_joystick(_which, _x, _y, _size, _it, _plan, _in, _test_k)
++{
++    var _gap = 6;
++    var _cell = floor((_size - 4 * _gap) / 3);
++    var _cx = _x + _size / 2;
++    var _cy = _y + _size / 2;
++    var _k0 = 0;
++    var _kd = ANIM_DIR0;
++    if (_which == 1)
++    {
++        _k0 = ANIM_FIRE0;
++        _kd = ANIM_FIRE0 + 1;
++    }
++    var _test_dir_k = -1;
++    if (anim_test && (_in[0] != 0 || _in[1] != 0))
++    {
++        if ((_which == 0 && !_in[2]) || (_which == 1 && _in[2])) { _test_dir_k = _kd + anim_dir_of(_in[0], _in[1]); }
++    }
++    var _lnames = anim_long_names();
++    ui_rrect(_x, _y + 3, _x + _size, _y + _size + 3, 18, c_black, c_black, 0.35);
++    ui_rrect(_x, _y, _x + _size, _y + _size, 18, make_colour_rgb(58, 62, 72), make_colour_rgb(30, 32, 38), 1);
++    ui_rrect_line(_x, _y, _x + _size, _y + _size, 18, global.TH.panel_edge, 0.8, 1);
++    var _hot_any = false;
++    var _bg = anim_bg();
++    for (var d = 0; d < 9; d++)
++    {
++        var _k = _k0;
++        var _gcx = 0;
++        var _gcy = 0;
++        if (d < 8)
++        {
++            _k = _kd + d;
++            var _gc = anim_dir_cell(d);
++            _gcx = _gc[0];
++            _gcy = _gc[1];
++        }
++        var _sx = _cx + _gcx * (_cell + _gap) - _cell / 2;
++        var _sy = _cy + _gcy * (_cell + _gap) - _cell / 2;
++        var _id = "anim_dir_" + string(_k);
++        var _help = _lnames[_k] + "|Plays live here. Click to give this direction its own frames, drag it to copy it to another slot, or drop an animation from the library on it. Empty directions borrow from the others (turned round when 'Turn to face left' is on), or from Walk.";
++        if (_which == 1) { _help = _lnames[_k] + "|Plays while the player holds fire and pushes this way - shooting, digging, swinging. Drag to copy it, or drop an animation from the library on it. Empty: it borrows from the other Fire directions."; }
++        if (d == 8)
++        {
++            _id = "anim_mid_" + string(_which);
++            _help = "Idle|Plays while it stands still. Click to edit it, drag it to copy it, or drop an animation on it. Empty: it stands facing the way it last moved (with directions), or plays Walk.";
++            if (_which == 1) { _help = "Fire|Plays while the player holds fire without pushing a direction. Click to edit it, or drop an animation on it. Empty: it uses a Fire direction, or the normal animation."; }
++        }
++        var _hot = ui_register(_id, _sx, _sy, _sx + _cell, _sy + _cell, _help);
++        if (_hot && d < 8 && !anim_drag_on) { _hot_any = true; }
++        if (_hot && ui_pressed)
++        {
++            ui_take_click();
++            if (anim_sel != _k)
++            {
++                anim_sel = _k;
++                anim_slot = 0;
++                anim_t0 = current_time;
++            }
++            var _own0 = _it.h.anims[_k].frames;
++            if (array_length(_own0) > 0) { anim_drag_arm(_own0, _it.h.anims[_k].rate, _it.h.anims[_k].mode, false, _it.colour, _lnames[_k], _k); }
++        }
++        var _own = array_length(_it.h.anims[_k].frames);
++        var _sbg = make_colour_rgb(22, 24, 30);
++        if (_hot) { _sbg = make_colour_rgb(44, 48, 58); }
++        var _test_active = (anim_test && (_test_k == _k || _test_dir_k == _k));
++        if (_test_active) { _sbg = merge_colour(_sbg, global.TH.accent, 0.32); }
++        ui_rrect(_sx, _sy, _sx + _cell, _sy + _cell, 8, _sbg, _sbg, 1);
++        ui_rrect(_sx + 3, _sy + 3, _sx + _cell - 3, _sy + _cell - 3, 6, _bg, _bg, 0.5);
++        var _a = 1;
++        if (_own == 0) { _a = 0.3; }
++        if (_test_active) { _a = 1; }
++        if (is_undefined(_plan))
++        {
++            if (_test_active || d == 8) { anim_strip_preview([_it.sprite], 8, 0, false, _sx, _sy, _cell, _it.colour, _a, 0, false); }
++        }
++        else
++        {
++            var _slot_k = _k;
++            var _slot_ticks = anim_ticks(0);
++            var _slot_face = 2;
++            if (_test_active)
++            {
++                _slot_k = _test_k;
++                _slot_ticks = anim_ticks(anim_test_t0);
++                _slot_face = anim_test_dir;
++            }
++            anim_slot_preview(_plan, _slot_k, _sx, _sy, _cell, _it.colour, _a, _slot_ticks, _slot_face, !_test_active);
++        }
++        var _ring = global.TH.panel_edge;
++        var _rw = 1;
++        if (_own > 0) { _ring = global.TH.accent2; }
++        if (anim_sel == _k)
++        {
++            _ring = global.TH.accent;
++            _rw = 3;
++        }
++        if (_test_active)
++        {
++            _ring = c_white;
++            _rw = 3;
++        }
++        ui_rrect_line(_sx - (_rw - 1), _sy - (_rw - 1), _sx + _cell + (_rw - 1), _sy + _cell + (_rw - 1), 8, _ring, 1, _rw);
++        if (d == 8)
++        {
++            var _mlab = "Idle";
++            if (_which == 1) { _mlab = "Fire"; }
++            if (_own > 0) { _mlab += " " + string(_own); }
++            var _mcol = global.TH.text_dim;
++            if (anim_sel == _k) { _mcol = global.TH.accent; }
++            ui_text(_sx + 4, _sy + _cell - 2, _mlab, _mcol, fa_left, fa_bottom, global.f_small, 1);
++        }
++        anim_drop_zone(_k, _sx, _sy, _sx + _cell, _sy + _cell);
++    }
++    // the fire button: lights up when fire is held
++    if (_which == 1)
++    {
++        var _fire_lit = (anim_test && _in[2]) || _hot_any || (anim_sel >= ANIM_FIRE0);
++        var _br = 8;
++        var _bx = _x + _size - _br - 2;
++        var _by = _y - 12;
++        var _bc = make_colour_rgb(110, 20, 20);
++        if (_fire_lit)
++        {
++            _bc = make_colour_rgb(255, 70, 50);
++            draw_set_alpha(0.35 + 0.15 * sin(current_time / 90));
++            draw_circle_colour(_bx, _by, _br * 1.9, _bc, _bc, false);
++            draw_set_alpha(1);
++        }
++        draw_circle_colour(_bx, _by, _br, merge_colour(_bc, c_white, 0.2), merge_colour(_bc, c_black, 0.35), false);
++        if (!_it.fire)
++        {
++            ui_rrect(_x, _y, _x + _size, _y + _size, 18, c_black, c_black, 0.5);
++            ui_text_wrap(_x + 14, _cy - 20, "Only the player holds fire", global.TH.text_dim, _size - 28, global.f_small, 1);
++        }
++    }
++}
++
++function ws_animate_draw(_x1, _y1, _x2, _y2)
++{
++    // narrow windows: the cast and the bank give the joysticks and frames room
++    var _lw = clamp(floor((_x2 - _x1) * 0.2), 190, 240);
++    var _rw = clamp(floor((_x2 - _x1) * 0.27), 250, 330);
++    var _cast = anim_cast(proj);
++    var _na = array_length(_cast);
++    anim_cast_sel = clamp(anim_cast_sel, 0, max(0, _na - 1));
++    anim_drop_k = -1;
++
++    // ---------------- cast ----------------
++    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Cast");
++    var _ly = _y1 + 54;
++    var _rowh = 58;
++    var _lcontent = _na * _rowh + 8;
++    var _loff = ui_scroll_begin("anim_list", _x1 + 6, _y1 + 50, _x1 + _lw - 6, _y2 - 8, _lcontent);
++    for (var i = 0; i < _na; i++)
++    {
++        var _ci = _cast[i];
++        var _ry = _ly + i * _rowh - _loff;
++        if (_ry < _y1 - _rowh || _ry > _y2) { continue; }
++        var _id = "anim_act_" + string(i);
++        var _hot = ui_register(_id, _x1 + 10, _ry, _x1 + _lw - 10, _ry + _rowh - 6, _ci.name + "|Click to animate it.");
++        var _tgt = 0;
++        if (_hot) { _tgt = 1; }
++        var _a = ui_anim_to(_id, _tgt);
++        if (anim_cast_sel == i) { ui_rrect(_x1 + 10, _ry, _x1 + _lw - 10, _ry + _rowh - 6, 10, global.TH.accent, global.TH.accent_dark, 0.9); }
++        else { ui_rrect(_x1 + 10, _ry, _x1 + _lw - 10, _ry + _rowh - 6, 10, global.TH.btn_hot_top, global.TH.btn_hot_bot, 0.25 + _a * 0.75); }
++        ui_rrect(_x1 + 16, _ry + 5, _x1 + 58, _ry + _rowh - 11, 6, anim_bg(), anim_bg(), 1);
++        draw_sprite_c64(anim_cast_preview_sprite(_ci), _x1 + 19, _ry + 7, 1.5, _ci.colour, 1);
++        ui_text(_x1 + 68, _ry + 16, ui_text_fit(_ci.name, global.f_bold, _lw - 90), global.TH.text, fa_left, fa_middle, global.f_bold, 1);
++        var _nfr = 0;
++        for (var ae = 0; ae < ANIM_COUNT; ae++) { _nfr += array_length(_ci.h.anims[ae].frames); }
++        var _sub = _ci.sub + "  -  not animated here";
++        if (_nfr > 0)
++        {
++            _sub = _ci.sub + "  -  " + string(_nfr) + " frames";
++            if (anims_dirs_on(_ci.h)) { _sub += ", 8 ways"; }
++        }
++        else if (proj.sprites[_ci.sprite].frames > 1) { _sub = _ci.sub + "  -  Sprites page animation"; }
++        ui_text(_x1 + 68, _ry + 35, ui_text_fit(_sub, global.f_small, _lw - 90), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
++        if (_hot && ui_pressed)
++        {
++            if (anim_cast_sel != i)
++            {
++                anim_cast_sel = i;
++                anim_slot = 0;
++                anim_t0 = current_time;
++                anim_test_entry = -1;
++            }
++            ui_take_click();
++        }
++    }
++    ui_scroll_end("anim_list", _x1 + 6, _y1 + 50, _x1 + _lw - 6, _y2 - 8, _lcontent);
++
++    var _cx1 = _x1 + _lw + 12;
++    var _cx2 = _x2 - _rw - 12;
++    if (_na == 0)
++    {
++        ui_panel(_cx1, _y1, _x2, _y2, "");
++        ui_text((_cx1 + _x2) / 2, (_y1 + _y2) / 2, "Add actors on the Actors page first, then animate them here.", global.TH.text_dim, fa_center, fa_middle, global.f_body, 1);
++        return;
++    }
++    var _it = _cast[anim_cast_sel];
++    var _h = _it.h;
++    anim_sel = clamp(anim_sel, 0, ANIM_COUNT - 1);
++    var _lnames = anim_long_names();
++    var _gravity = _it.gravity;
++    var _dirs_on = anims_dirs_on(_h);
++
++    // ---------------- centre: two joysticks, preview, frames ----------------
++    ui_panel(_cx1, _y1, _cx2, _y2, ui_text_fit("Animate " + _it.name, global.f_title, _cx2 - _cx1 - 32));
++    var _plan = anim_plan(_it);
++    var _an = _h.anims[anim_sel];
++    var _nf = array_length(_an.frames);
++    anim_slot = clamp(anim_slot, 0, min(_nf, ANIM_FRAMES - 1));
++
++    // test mode: read the joystick and pick the animation as the game does
++    var _in = [0, 0, false];
++    var _test_k = anim_sel;
++    var _test_flip = false;
++    if (anim_test)
++    {
++        _in = anim_test_input(anim_test_source);
++        var _k2 = 0;
++        if (_in[0] != 0 || _in[1] != 0)
++        {
++            anim_test_dir = anim_dir_of(_in[0], _in[1]);
++            if (_dirs_on) { _k2 = ANIM_DIR0 + anim_test_dir; }
++            else
++            {
++                _k2 = 1;
++                if (_gravity && _in[1] < 0) { _k2 = 2; }
++                if (_gravity && _in[1] > 0) { _k2 = 3; }
++            }
++            if (_in[0] < 0) { anim_test_face = true; }
++            if (_in[0] > 0) { anim_test_face = false; }
++        }
++        var _fire_on = false;
++        if (!is_undefined(_plan)) { _fire_on = (_in[2] && array_length(_plan) > ANIM_FIRE0); }
++        if (_fire_on)
++        {
++            _k2 = ANIM_FIRE0;
++            if (_in[0] != 0 || _in[1] != 0) { _k2 = ANIM_FIRE0 + 1 + anim_test_dir; }
++        }
++        if (_k2 != anim_test_entry)
++        {
++            anim_test_entry = _k2;
++            anim_test_t0 = current_time;
++        }
++        _test_k = _k2;
++        if (!_dirs_on && _h.anim_flip && anim_test_face && _k2 < ANIM_BASIC) { _test_flip = true; }
++    }
++
++    // left: the Moving joystick above the With Fire joystick, then Walk / In air / Falling and Test
++    var _jx = _cx1 + 20;
++    var _jy = _y1 + 52;
++    var _jsize = floor(min(190, (_y2 - _jy - 20 - 2 * 24 - 2 * 38 - 40) / 2));
++    _jsize = max(110, _jsize);
++    ui_heading(_jx, _jy, "Moving");
++    _jy += 20;
++    anim_joystick(0, _jx, _jy, _jsize, _it, _plan, _in, _test_k);
++    _jy += _jsize + 10;
++    var _fh = "With Fire";
++    if (!_it.fire) { _fh = "With Fire (player only)"; }
++    ui_heading(_jx, _jy, _fh);
++    _jy += 20;
++    anim_joystick(1, _jx, _jy, _jsize, _it, _plan, _in, _test_k);
++    _jy += _jsize + 12;
++    var _colw = _jsize + 30;
++    var _tw0 = floor((_colw - 88) / 2);
++    var _tbw = [_tw0, _tw0, _colw - 8 - 2 * _tw0];
++    var _tbx = _jx;
++    var _side = [1, 2, 3];
++    var _slab = ["Walk", "In air", "Falling"];
++    var _shelp = [
++        "Walk|Plays while it moves. The 8 directions of the Moving joystick borrow it when they have no frames of their own (turned round for left when 'Turn to face left' is on).",
++        "In air|Plays while the player of a platform game goes up through the air. Empty: it uses Walk.",
++        "Falling|Plays while the player of a platform game comes down. Empty: it uses In air."
++    ];
++    for (var sb = 0; sb < 3; sb++)
++    {
++        var _sk = _side[sb];
++        var _sl = _slab[sb];
++        anim_drop_zone(_sk, _tbx, _jy, _tbx + _tbw[sb], _jy + 30);
++        if (ui_tab("anim_tab_" + string(_sk), _tbx, _jy, _tbw[sb], 30, _sl, anim_sel == _sk, _shelp[sb]))
++        {
++            if (anim_sel != _sk)
++            {
++                anim_sel = _sk;
++                anim_slot = 0;
++                anim_t0 = current_time;
++            }
++        }
++        _tbx += _tbw[sb] + 4;
++    }
++    _jy += 38;
++    var _tst = BTN_NORMAL;
++    if (anim_test) { _tst = BTN_ON; }
++    var _tlab = "Test";
++    if (anim_test) { _tlab = "Stop"; }
++    var _test_btnw = floor((_colw - 4) / 2);
++    if (ui_button("anim_test", _jx, _jy, _test_btnw, 32, _tlab, "Test|Drive the preview with the keys or a gamepad, as the joystick in port 2 drives the game. The preview stays in place while its animation changes.", _tst))
++    {
++        anim_test = !anim_test;
++        anim_test_entry = -1;
++    }
++    var _input_new = ui_dropdown("anim_test_source", _jx + _test_btnw + 4, _jy, _colw - _test_btnw - 4, 32, ["Keys", "Gamepad"], anim_test_source, "Test input|Keyboard (arrows / WASD, fire Space / Ctrl) or a connected gamepad (d-pad / stick, fire A).");
++    if (_input_new != anim_test_source)
++    {
++        anim_test_source = clamp(_input_new, 0, 1);
++        anim_test_entry = -1;
++    }
++    var _input_keys = "Move: arrows or WASD\nFire: Space / Ctrl";
++    if (anim_test_source == 1) { _input_keys = "Move: d-pad or left stick\nFire: A"; }
++    ui_text_wrap(_jx, _jy + 38, _input_keys, global.TH.text_dim, _colw, global.f_small, 1);
++    var _ax1 = _jx + _colw + 20;
++
++    var _py1 = _y1 + 52;
++    var _strip_h = 164;
++    var _ctrl_h = 132;
++    var _py2 = _y2 - 20 - _strip_h - _ctrl_h;
++    var _vx1 = _ax1;
++    // room at the bottom for the note (up to 3 lines when narrow)
++    var _resv = 50;
++    if (_cx2 - 20 - _vx1 < 420) { _resv = 74; }
++    var _pvh = _py2 - _py1 - _resv - 10;
++    var _preview_sc = max(1, floor(min((_cx2 - 20 - _vx1 - 40) / 24, _pvh / 21)));
++
++    // preview: what the C64 will play
++    ui_inset(_vx1, _py1, _cx2 - 20, _py2, 10);
++    ui_rrect(_vx1 + 6, _py1 + 6, _cx2 - 26, _py2 - 6, 8, anim_bg(), anim_bg(), 1);
++    ui_register("anim_preview", _vx1, _py1, _cx2 - 20, _py2, "Preview|Plays the animation at the C64's speed (" + string(sid_fps()) + " frames a second), in the sprite's real colours. Switch on Test to drive it with the keys or a gamepad.");
++    var _note = "";
++    var _dx0 = floor((_vx1 + _cx2 - 20 - 24 * _preview_sc) / 2);
++    var _dy0 = _py1 + 10 + floor((_pvh - 21 * _preview_sc) / 2);
++    if (is_undefined(_plan))
++    {
++        _note = "Not animated here: it plays its Sprites page animation. Pick sprites from the bank to animate it here.";
++        draw_sprite_c64_flip(_it.sprite, _dx0, _dy0, _preview_sc, _test_flip, _it.colour, 1);
++    }
++    else if (_test_k >= array_length(_plan))
++    {
++        _note = "No Fire animations yet - pick sprites from the bank to add some (until then the player keeps its normal animation)";
++        draw_sprite_c64(_it.sprite, _dx0, _dy0, _preview_sc, _it.colour, 0.35);
++    }
++    else
++    {
++        var _pe = _plan[_test_k];
++        var _ticks = anim_ticks(anim_t0);
++        if (anim_test) { _ticks = anim_ticks(anim_test_t0); }
++        var _flip = _pe.flip;
++        if (!anim_test && !_dirs_on && _h.anim_flip && anim_face_left && _test_k < ANIM_BASIC) { _flip = !_flip; }
++        if (_test_flip) { _flip = !_flip; }
++        var _fi = 0;
++        if (_pe.mode == 3)
++        {
++            var _fd = 2;
++            if (anim_test) { _fd = anim_test_dir; }
++            _pe = _plan[ANIM_DIR0 + _fd];
++            _flip = _pe.flip;
++        }
++        else { _fi = anim_frame_at(_pe, _ticks); }
++        var _psi = clamp(_pe.frames[_fi], 0, SPR_COUNT - 1);
++        draw_sprite_c64_flip(_psi, _dx0, _dy0, _preview_sc, _flip, _it.colour, 1);
++        if (anim_test)
++        {
++            _note = "Test: " + _lnames[_test_k];
++            if (_gravity && !_dirs_on) { _note += " (up = in the air, down = falling)"; }
++        }
++        else if (_nf == 0)
++        {
++            _note = "Empty - borrows from another animation (shown)";
++            if (anim_sel == 0 && _dirs_on) { _note = "Empty - stands facing the way it last moved"; }
++        }
++        else { _note = _lnames[anim_sel] + ":  frame " + string(_fi + 1) + " of " + string(array_length(_pe.frames)) + "   -   sprite " + string(_psi + 1) + ": " + proj.sprites[_psi].name; }
++    }
++    var _show_face = (_h.anim_flip && !_dirs_on && !anim_test && anim_sel < ANIM_BASIC);
++    var _nw = _cx2 - 26 - 12 - (_vx1 + 16);
++    if (_show_face) { _nw = _cx2 - 170 - 12 - (_vx1 + 16); }
++    draw_set_font(global.f_small);
++    var _nh = ui_sh_ext(_note, _nw);
++    ui_text_wrap(_vx1 + 16, _py2 - 14 - _nh, _note, global.TH.text_dim, _nw, global.f_small, 1);
++    if (_show_face) { anim_face_left = ui_toggle("anim_faceleft", _cx2 - 170, _py2 - 34, "Facing left", anim_face_left, "Facing left|Shows the frames turned round, as it looks while it moves left."); }
++    if (!_gravity && (anim_sel == 2 || anim_sel == 3)) { ui_text((_vx1 + _cx2 - 20) / 2, _py1 + 22, ui_text_fit("Only a platform game's player uses this", global.f_small, _cx2 - 20 - _vx1 - 24), global.TH.warn, fa_center, fa_middle, global.f_small, 1); }
++
++    // frame strip: up to 16 frames in two rows; the slot after the last one adds a frame
++    var _sy = _py2 + 14;
++    var _fhw = _cx2 - 20 - _ax1;
++    var _fhd = string_upper(_lnames[anim_sel] + " frames  (" + string(_nf) + " / " + string(ANIM_FRAMES) + ")  -  click a frame, then a sprite in the bank");
++    draw_set_font(global.f_small);
++    if (ui_sw(_fhd) > _fhw) { _fhd = string_upper(_lnames[anim_sel] + " frames  (" + string(_nf) + " / " + string(ANIM_FRAMES) + ")  -  click a frame, then a sprite"); }
++    ui_heading(_ax1, _sy, ui_text_fit(_fhd, global.f_small, _fhw));
++    _sy += 20;
++    var _strip_cols = 8;
++    var _strip_rows = 2;
++    var _cellw = min(64, floor((_fhw - (_strip_cols - 1) * 8) / _strip_cols));
++    for (var k = 0; k < ANIM_FRAMES; k++)
++    {
++        var _kx = _ax1 + (k mod _strip_cols) * (_cellw + 8);
++        var _sloty = _sy + (k div _strip_cols) * (_cellw + 8);
++        var _kid = "anim_slot_" + string(k);
++        if (k < _nf)
++        {
++            var _khot = ui_register(_kid, _kx, _sloty, _kx + _cellw, _sloty + _cellw, "Frame " + string(k + 1) + "|Click to select it, then click a sprite in the bank to change it. Double-click to draw it on the Sprites page. Move, remove or clear frames with the buttons below.");
++            ui_rrect(_kx, _sloty, _kx + _cellw, _sloty + _cellw, 8, anim_bg(), anim_bg(), 1);
++            var _ksc = (_cellw - 8) / 24;
++            draw_sprite_c64(_an.frames[k], _kx + (_cellw - 24 * _ksc) / 2, _sloty + (_cellw - 21 * _ksc) / 2, _ksc, _it.colour, 1);
++            ui_text(_kx + 5, _sloty + 4, string(k + 1), global.TH.text_faint, fa_left, fa_top, global.f_small, 1);
++            if (anim_slot == k) { ui_rrect_line(_kx - 2, _sloty - 2, _kx + _cellw + 2, _sloty + _cellw + 2, 9, global.TH.accent, 1, 2); }
++            else { ui_rrect_line(_kx, _sloty, _kx + _cellw, _sloty + _cellw, 8, global.TH.panel_edge, 0.8, 1); }
++            if (_khot && ui_pressed)
++            {
++                anim_slot = k;
++                ui_take_click();
++                if (anim_dbl(_kid)) { anim_edit_sprite(_an.frames[k]); }
++            }
++        }
++        else if (k == _nf)
++        {
++            var _ahot = ui_register(_kid, _kx, _sloty, _kx + _cellw, _sloty + _cellw, "Add a frame|Select this slot, then click sprites in the bank: each one is added to the end of the animation.");
++            var _aa = 0.35;
++            if (_ahot) { _aa = 0.7; }
++            ui_rrect(_kx, _sloty, _kx + _cellw, _sloty + _cellw, 8, global.TH.btn_hot_top, global.TH.btn_hot_bot, _aa);
++            ui_text(_kx + _cellw / 2, _sloty + _cellw / 2, "+", global.TH.text, fa_center, fa_middle, global.f_title, 1);
++            if (anim_slot == k) { ui_rrect_line(_kx - 2, _sloty - 2, _kx + _cellw + 2, _sloty + _cellw + 2, 9, global.TH.accent, 1, 2); }
++            if (_ahot && ui_pressed)
++            {
++                anim_slot = k;
++                ui_take_click();
++            }
++        }
++        else { ui_rrect_line(_kx, _sloty, _kx + _cellw, _sloty + _cellw, 8, global.TH.panel_edge, 0.35, 1); }
++    }
++
++    // controls
++    var _ky = _sy + _strip_rows * (_cellw + 8) + 10;
++    var _half = floor((_cx2 - 20 - _ax1 - 12) / 2);
++    var _sphd = "Speed (" + string(sid_fps()) + "ths of a second per frame)";
++    draw_set_font(global.f_small);
++    if (ui_sw(string_upper(_sphd)) > _half) { _sphd = "Speed (" + string(sid_fps()) + "ths per frame)"; }
++    if (ui_sw(string_upper(_sphd)) > _half) { _sphd = "Speed"; }
++    ui_heading(_ax1, _ky, _sphd);
++    ui_heading(_ax1 + 12 + _half, _ky, "Plays");
++    var _nr = ui_stepper("anim_rate", _ax1, _ky + 18, min(_half, 180), _an.rate, 2, 30, "Animation speed|How many frames of the C64 (" + string(sid_fps()) + " a second) each picture stays on screen. 4 is quick, 8 a brisk walk, 20 a slow blink.");
++    if (_nr != _an.rate)
++    {
++        anim_begin_edit(_it, "animrate" + string(anim_cast_sel) + "_" + string(anim_sel));
++        _h.anims[anim_sel].rate = _nr;
++    }
++    var _nm = ui_dropdown("anim_mode", _ax1 + 12 + _half, _ky + 18, _half, 30, anim_mode_names(), _an.mode, "How it plays|Loop starts again after the last frame. Once plays to the last frame and holds it while the animation lasts - a ship veering and holding its lean, or a landing. Ping-pong plays forwards then backwards.");
++    if (_nm != _an.mode)
++    {
++        anim_begin_edit(_it, "animmode" + string(current_time));
++        _h.anims[anim_sel].mode = _nm;
++    }
++    _ky += 58;
++    var _bavail = _cx2 - 20 - _ax1 - 3 * 8;
++    var _bw_mv = floor(_bavail / 4);
++    var _bw_rm = _bw_mv;
++    var _bw_cl = _bavail - 3 * _bw_mv;
++    var _bx_rm = _ax1 + 2 * (_bw_mv + 8);
++    var _bx_cl = _bx_rm + _bw_rm + 8;
++    // narrow: shorter labels so every button reads
++    draw_set_font(global.f_bold);
++    var _lab_l = "Move left";
++    var _lab_r = "Move right";
++    if (ui_sw(_lab_r) > _bw_mv - 14)
++    {
++        _lab_l = "< Move";
++        _lab_r = "Move >";
++    }
++    var _sel_real = (anim_slot < _nf);
++    var _st = BTN_NORMAL;
++    if (!_sel_real || anim_slot == 0) { _st = BTN_GHOST; }
++    if (ui_button("anim_left", _ax1, _ky, _bw_mv, 32, _lab_l, "Move left|Swaps the selected frame with the one before it.", _st))
++    {
++        if (_sel_real && anim_slot > 0)
++        {
++            anim_begin_edit(_it, "animmove" + string(current_time));
++            var _fr = _h.anims[anim_sel].frames;
++            var _tmp = _fr[anim_slot - 1];
++            _fr[anim_slot - 1] = _fr[anim_slot];
++            _fr[anim_slot] = _tmp;
++            anim_slot -= 1;
++        }
++    }
++    _st = BTN_NORMAL;
++    if (!_sel_real || anim_slot >= _nf - 1) { _st = BTN_GHOST; }
++    if (ui_button("anim_right", _ax1 + (_bw_mv + 8), _ky, _bw_mv, 32, _lab_r, "Move right|Swaps the selected frame with the one after it.", _st))
++    {
++        if (_sel_real && anim_slot < _nf - 1)
++        {
++            anim_begin_edit(_it, "animmove" + string(current_time));
++            var _fr2 = _h.anims[anim_sel].frames;
++            var _tmp2 = _fr2[anim_slot + 1];
++            _fr2[anim_slot + 1] = _fr2[anim_slot];
++            _fr2[anim_slot] = _tmp2;
++            anim_slot += 1;
++        }
++    }
++    _st = BTN_NORMAL;
++    if (!_sel_real) { _st = BTN_GHOST; }
++    if (ui_button("anim_remove", _bx_rm, _ky, _bw_rm, 32, "Remove", "Remove frame|Takes the selected frame out of this animation. You can Undo this.", _st))
++    {
++        if (_sel_real)
++        {
++            anim_begin_edit(_it, "animdel" + string(current_time));
++            array_delete(_h.anims[anim_sel].frames, anim_slot, 1);
++        }
++    }
++    _st = BTN_DANGER;
++    if (_nf == 0) { _st = BTN_GHOST; }
++    if (ui_button("anim_clear", _bx_cl, _ky, _bw_cl, 32, "Clear", "Clear animation|Removes every frame of this animation, so it borrows from the others again (with nothing left here, it plays its sprite's Sprites page animation). You can Undo this.", _st))
++    {
++        if (_nf > 0)
++        {
++            anim_begin_edit(_it, "animclear" + string(current_time));
++            _h.anims[anim_sel].frames = [];
++            anim_slot = 0;
++        }
++    }
++
++    // ---------------- right: turning round and the sprite bank ----------------
++    var _rx2 = _x2 - _rw;
++    ui_panel(_rx2, _y1, _x2, _y2, "Sprite bank");
++    var _fx = _rx2 + 20;
++    var _fw = _rw - 40;
++    var _oy = _y1 + 54;
++    var _fhelp = "Turn to face left|Draw the frames facing right; while it moves left the C64 shows them turned round. The VIC-II can't turn a sprite round, so the game gets a mirrored copy of each of those sprites (up to " + string(ANIM_MIRRORS) + " in all, 64 bytes each).";
++    if (_dirs_on) { _fhelp = "Turn round missing directions|When the joystick directions have frames: an empty left-side direction (W, NW, SW) uses its right-side partner turned round, and the other way about - draw one side and get both. Each turned sprite is a mirrored copy in the game (up to " + string(ANIM_MIRRORS) + ")."; }
++    var _flipv = ui_toggle("anim_flip", _fx, _oy, "Turn to face left", _h.anim_flip, _fhelp);
++    if (_flipv != _h.anim_flip)
++    {
++        anim_begin_edit(_it, "animflip" + string(current_time));
++        _h.anim_flip = _flipv;
++    }
++    _oy += 30;
++    var _ab = anim_build(proj);
++    var _mtxt = string(array_length(_ab.mirrors)) + " of " + string(ANIM_MIRRORS) + " turned copies used";
++    var _mcol = global.TH.text_faint;
++    if (array_length(_ab.warnings) > 0) { _mcol = global.TH.warn; }
++    ui_text(_fx, _oy + 6, _mtxt, _mcol, fa_left, fa_middle, global.f_small, 1);
++    _oy += 22;
++    var _ltw = floor((_fw - 6) / 2);
++    if (ui_tab("anim_lib_tab_0", _fx, _oy, _ltw, 30, "Sprites", anim_lib_tab == 0, "Sprites|The sprite bank: click a sprite to put it in the selected frame.")) { anim_lib_tab = 0; }
++    if (ui_tab("anim_lib_tab_1", _fx + _ltw + 6, _oy, _ltw, 30, "Animations", anim_lib_tab == 1, "Animation library|Every animation the cast already has, playing live. Drag one onto a joystick slot (or Walk, In air, Falling) to copy it there.")) { anim_lib_tab = 1; }
++    _oy += 38;
++    if (anim_lib_tab == 1)
++    {
++        anim_library_draw(_cast, _rx2, _fx, _fw, _oy, _x2, _y2);
++        anim_drag_update(_it);
++        return;
++    }
++    var _gcols = 5;
++    var _gcell = floor((_fw - (_gcols - 1) * 6) / _gcols);
++    var _gtop = _oy + 4;
++    var _gcontent = ceil(SPR_COUNT / _gcols) * (_gcell + 6) + 6;
++    var _goff = ui_scroll_begin("anim_bank", _rx2 + 6, _gtop, _x2 - 6, _y2 - 8, _gcontent);
++    for (var b = 0; b < SPR_COUNT; b++)
++    {
++        var _gx = _fx + (b mod _gcols) * (_gcell + 6);
++        var _gy = _gtop + 4 + (b div _gcols) * (_gcell + 6) - _goff;
++        if (_gy < _gtop - _gcell || _gy > _y2) { continue; }
++        var _bid = "anim_bank_" + string(b);
++        var _bsp = proj.sprites[b];
++        var _bhot = ui_register(_bid, _gx, _gy, _gx + _gcell, _gy + _gcell, string(b + 1) + ": " + _bsp.name + "|Click to put this sprite in the selected frame (or add it at the end). Double-click to draw it on the Sprites page. Every frame shows in the sprite's own colour.");
++        var _ba = 0;
++        if (_bhot) { _ba = 1; }
++        ui_rrect(_gx, _gy, _gx + _gcell, _gy + _gcell, 6, anim_bg(), anim_bg(), 1);
++        var _gsc = (_gcell - 6) / 24;
++        draw_sprite_c64(b, _gx + (_gcell - 24 * _gsc) / 2, _gy + (_gcell - 21 * _gsc) / 2, _gsc, _it.colour, 1);
++        var _live = _h.anims[anim_sel].frames;
++        var _inanim = false;
++        for (var f = 0; f < array_length(_live); f++)
++        {
++            if (_live[f] == b) { _inanim = true; }
++        }
++        if (_inanim) { ui_rrect_line(_gx, _gy, _gx + _gcell, _gy + _gcell, 6, global.TH.accent2, 0.9, 2); }
++        else { ui_rrect_line(_gx, _gy, _gx + _gcell, _gy + _gcell, 6, global.TH.accent, 0.25 + 0.65 * _ba, 1); }
++        if (_bhot && ui_pressed)
++        {
++            ui_take_click();
++            if (anim_dbl(_bid))
++            {
++                // double-click: draw it instead (the first click added it at the end - take that back)
++                var _back = _h.anims[anim_sel].frames;
++                if (anim_click_added && array_length(_back) > 0 && _back[array_length(_back) - 1] == b)
++                {
++                    array_delete(_back, array_length(_back) - 1, 1);
++                    anim_slot = array_length(_back);
++                }
++                else if (is_array(anim_click_set) && anim_click_set[0] == anim_sel && anim_click_set[1] < array_length(_back) && _back[anim_click_set[1]] == b)
++                {
++                    _back[anim_click_set[1]] = anim_click_set[2];
++                }
++                anim_click_added = false;
++                anim_click_set = undefined;
++                anim_edit_sprite(b);
++            }
++            else
++            {
++                anim_click_added = false;
++                anim_click_set = undefined;
++                var _cur = _h.anims[anim_sel].frames;
++                if (anim_slot < array_length(_cur))
++                {
++                    anim_begin_edit(_it, "animset" + string(current_time));
++                    _cur = _h.anims[anim_sel].frames;
++                    if (anim_slot < array_length(_cur))
++                    {
++                        anim_click_set = [anim_sel, anim_slot, _cur[anim_slot]];
++                        _cur[anim_slot] = b;
++                    }
++                    else { array_push(_cur, b); }
++                }
++                else if (array_length(_cur) < ANIM_FRAMES)
++                {
++                    anim_begin_edit(_it, "animadd" + string(current_time));
++                    array_push(_h.anims[anim_sel].frames, b);
++                    anim_click_added = true;
++                    anim_slot = min(array_length(_h.anims[anim_sel].frames), ANIM_FRAMES - 1);
++                }
++                else { toast("An animation has up to " + string(ANIM_FRAMES) + " frames", 1); }
++            }
++        }
++    }
++    ui_scroll_end("anim_bank", _rx2 + 6, _gtop, _x2 - 6, _y2 - 8, _gcontent);
++    anim_drag_update(_it);
++}
++
++/// The animation library: every animation with frames of its own, of the whole cast, playing
++/// live. Press one and drag it onto a joystick slot to copy it there.
++function anim_library_draw(_cast, _rx2, _fx, _fw, _oy, _x2, _y2)
++{
++    var _short = anim_names();
++    var _lnames = anim_long_names();
++    var _items = [];
++    for (var a = 0; a < array_length(_cast); a++)
++    {
++        for (var k = 0; k < ANIM_COUNT; k++)
++        {
++            if (array_length(_cast[a].h.anims[k].frames) > 0) { array_push(_items, [a, k]); }
++        }
++    }
++    if (array_length(_items) == 0)
++    {
++        ui_text_wrap(_fx, _oy + 10, "No animations yet - give someone some frames and they show up here, ready to drag onto other slots and cast members.", global.TH.text_dim, _fw, global.f_small, 1);
++        return;
++    }
++    var _gcols = 3;
++    var _gcell = floor((_fw - (_gcols - 1) * 8) / _gcols);
++    var _gh = _gcell + 30;
++    var _gtop = _oy;
++    var _gcontent = ceil(array_length(_items) / _gcols) * (_gh + 8) + 8;
++    var _goff = ui_scroll_begin("anim_lib", _rx2 + 6, _gtop, _x2 - 6, _y2 - 8, _gcontent);
++    for (var i = 0; i < array_length(_items); i++)
++    {
++        var _ci = _cast[_items[i][0]];
++        var _ak = _items[i][1];
++        var _an = _ci.h.anims[_ak];
++        var _gx = _fx + (i mod _gcols) * (_gcell + 8);
++        var _gy = _gtop + 4 + (i div _gcols) * (_gh + 8) - _goff;
++        if (_gy < _gtop - _gh || _gy > _y2) { continue; }
++        var _lid = "anim_lib_" + string(i);
++        var _label = _ci.name + " " + _short[_ak];
++        if (_ak >= ANIM_FIRE0 + 1) { _label = _ci.name + " Fire " + _short[_ak]; }
++        var _hot = ui_register(_lid, _gx, _gy, _gx + _gcell, _gy + _gh, _ci.name + ": " + _lnames[_ak] + "|" + string(array_length(_an.frames)) + " frames. Drag it onto a joystick slot - of this cast member or another - to copy it there (you can Undo).");
++        ui_rrect(_gx, _gy, _gx + _gcell, _gy + _gcell, 8, anim_bg(), anim_bg(), 1);
++        anim_strip_preview(_an.frames, _an.rate, _an.mode, false, _gx, _gy, _gcell, _ci.colour, 1, anim_ticks(0), true);
++        var _ea = 0.35;
++        if (_hot) { _ea = 1; }
++        ui_rrect_line(_gx, _gy, _gx + _gcell, _gy + _gcell, 8, global.TH.accent, _ea, 1);
++        ui_text(_gx + _gcell / 2, _gy + _gcell + 4, ui_text_fit(_label, global.f_small, _gcell + 6), global.TH.text_dim, fa_center, fa_top, global.f_small, 1);
++        if (_hot && ui_pressed)
++        {
++            ui_take_click();
++            anim_drag_arm(_an.frames, _an.rate, _an.mode, false, _ci.colour, _label, -1);
++        }
++    }
++    ui_scroll_end("anim_lib", _rx2 + 6, _gtop, _x2 - 6, _y2 - 8, _gcontent);
++}
++
++/// Dragging an animation: starts once the mouse moves a few pixels, plays under the mouse,
++/// and drops on the slot it is let go over
++function anim_drag_update(_it)
++{
++    if (!anim_drag_armed) { return; }
++    if (ui_held && !anim_drag_on && point_distance(ui_mx, ui_my, anim_drag_x0, anim_drag_y0) > 6) { anim_drag_on = true; }
++    if (anim_drag_on)
++    {
++        var _gw = 64;
++        var _gx = ui_mx + 12;
++        var _gy = ui_my + 12;
++        ui_rrect(_gx, _gy, _gx + _gw, _gy + _gw, 8, anim_bg(), anim_bg(), 0.9);
++        anim_strip_preview(anim_drag_frames, anim_drag_rate, anim_drag_mode, anim_drag_flip, _gx, _gy, _gw, anim_drag_col, 1, anim_ticks(0), true);
++        ui_rrect_line(_gx, _gy, _gx + _gw, _gy + _gw, 8, global.TH.accent, 1, 2);
++        ui_text(_gx, _gy + _gw + 4, anim_drag_label, global.TH.text, fa_left, fa_top, global.f_small, 1);
++    }
++    if (!ui_held)
++    {
++        if (anim_drag_on && anim_drop_k >= 0) { anim_drop_into(_it, anim_drop_k, anim_drag_frames, anim_drag_rate, anim_drag_mode); }
++        anim_drag_armed = false;
++        anim_drag_on = false;
++    }
++}
+diff --git a/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.yy b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.yy
+new file mode 100644
+index 0000000..464a12e
+--- /dev/null
++++ b/C64NoCode/scripts/scr_ws_animate/scr_ws_animate.yy
+@@ -0,0 +1,13 @@
++{
++  "$GMScript":"v1",
++  "%Name":"scr_ws_animate",
++  "isCompatibility":false,
++  "isDnD":false,
++  "name":"scr_ws_animate",
++  "parent":{
++    "name":"SCRIPTS",
++    "path":"folders/SCRIPTS.yy",
++  },
++  "resourceType":"GMScript",
++  "resourceVersion":"2.0",
++}
+diff --git a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+index 60388d2..07b33ae 100644
+--- a/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
++++ b/C64NoCode/scripts/scr_ws_shell/scr_ws_shell.gml
+@@ -8,7 +8,8 @@
+ #macro WS_SOUND 5
+ #macro WS_BUILD 6
+ #macro WS_MUSIC 13
+-#macro WS_COUNT 14
++#macro WS_ANIMATE 14
++#macro WS_COUNT 15
+ 
+ function ws_set(_i)
+ {
+@@ -273,14 +274,14 @@ function ws_tabs()
+ {
+     if (proj.game_type == 1)
+     {
+-        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_SOUND, WS_MUSIC, WS_BUILD];
++        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_ANIMATE, WS_SOUND, WS_MUSIC, WS_BUILD];
+     }
+-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
++    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_ANIMATE, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
+ }
+ 
+ function ws_name(_w)
+ {
+-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music"];
++    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music", "Animate"];
+     return _n[_w];
+ }
+ 
+@@ -300,7 +301,8 @@ function ws_help(_w)
+         "Tiles|Build 16x16 tiles from 4 characters and give them jobs: solid, deadly, collectable, exit, ladder and more.",
+         "Map|Paint levels with tiles, place enemy spawners and the player's start. Up to 8 levels.",
+         "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot.",
+-        "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play."
++        "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Bring in ProTracker .mod files, or save songs as .mod or .SID. Sound effects borrow voice 1 or 2 while they play.",
++        "Animate|Give the player, enemies and shots animations: Idle, Walk, In air and Falling, or a set for each of the 8 joystick directions, and Fire animations for the player. Test them with the keys or a gamepad. Frames can be turned round to face left."
+     ];
+     return _h[_w];
+ }

@@ -75,15 +75,18 @@ function live_measure()
         live_seg_sound += _dgn;
         var _ms = live_label(_lab, "mus_start", _org);
         live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;
+        // the Animate page's player and tables (after the data) count as code
+        var _as = live_label(_lab, "anim_start", _org);
+        var _an = live_label(_lab, "anim_end", _as) - _as;
         if (proj.game_type == 1)
         {
             // engine and code, then the level data (tiles, enemies, maps - the sound tables are in it), then sprites + charset
             var _ld = live_label(_lab, "level_data", _org);
             var _ds = live_label(_lab, "spr_src", live_end);
-            live_seg_code = _ld - _org;
+            live_seg_code = _ld - _org + _an;
             live_seg_gap = 0;
             live_seg_sprites = live_end - _ds;
-            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music);
+            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music - _an);
             live_limit = 32768;
             live_spr_end = 0;
         }
@@ -93,8 +96,9 @@ function live_measure()
             var _sp = live_label(_lab, "spr_data", _ve);
             live_seg_code = _ve - _org - (live_seg_sound - _dgn);
             live_seg_gap = _sp - _ve;
-            live_seg_sprites = SPR_COUNT * 64;
-            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn);
+            live_seg_sprites = live_label(_lab, "spr_end", _sp + SPR_COUNT * 64) - _sp;
+            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music - _dgn - _an);
+            live_seg_code += _an;
             live_limit = C64_BASIC_END;
             live_spr_end = _sp + live_seg_sprites;
         }

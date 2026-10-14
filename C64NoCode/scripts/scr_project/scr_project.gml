@@ -46,7 +46,9 @@ function actor_new(_name)
         y : 140,
         visible : true,
         start_left : false,
-        start_up : false
+        start_up : false,
+        anims : anims_new(),        // the Animate page (scr_anim)
+        anim_flip : false
     };
 }
 
@@ -357,6 +359,7 @@ function project_from_loaded(_raw)
     }
     if (array_length(_ens) == 0) { _ens = [enemy_new("Enemy 1")]; }
     _p.enemies = _ens;
+    anim_project_fix(_p);
     var _lvls = [];
     var _ll = _raw[$ "levels"];
     if (is_array(_ll))
