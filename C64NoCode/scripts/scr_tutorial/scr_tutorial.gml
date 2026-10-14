@@ -104,7 +104,7 @@ function tut_init()
         tut_step(WS_BUILD, "build_showasm", "Peek under the hood", "Curious? This shows the 6502 assembly language the studio wrote for you. You never have to touch it."),
         tut_step(WS_BUILD, "", "You're ready!", "That's everything. Load the example, change something, build it and see what happens. Have fun making games!"),
         // ---------- TEMPLATES ----------
-        tut_step(WS_TEMPLATES, "tpl_card_1", "Start from a template", "Each card is a complete game: shoot-em-ups, platformers, a Boulder Dash style cave and a maze. The picture shows the start of its first level."),
+        tut_step(WS_TEMPLATES, "tpl_card_1", "Start from a template", "Each card is a complete game: shoot-em-ups, platformers, a Boulder Dash style cave, a maze and a single-screen game with levels. The picture shows the start of its first level."),
         tut_step(WS_TEMPLATES, "tpl_use_1", "Use it", "This replaces your project with the template. Then change anything - every tile, enemy and setting is yours to edit. Undo brings your old project back."),
         // ---------- WORLD ----------
         tut_step(WS_WORLD, "w_kind", "Kind of game", "Choose how the player moves: flying and shooting, running and jumping, digging through a cave, or walking a maze."),

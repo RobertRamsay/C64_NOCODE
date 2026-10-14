@@ -203,6 +203,7 @@ function ws_templates_draw(_x1, _y1, _x2, _y2)
             proj_path = "";
             project_after_change();
             if (proj.game_type == 1) { ws_set(WS_WORLD); }
+            else if (proj.levels_on) { ws_set(WS_LEVELS); }
             else { ws_set(WS_HOME); }
             toast(_t.name + " loaded - build it to play!", 0);
         }
@@ -293,10 +294,30 @@ function tpl_preview_surface(_i)
         var _keep = proj;
         proj = _p;
         draw_c64_screen(0, -12, 1, false);
+        // the first level's hills (Levels page), with the walkers standing on them
+        var _gh = undefined;
+        if (_p.levels_on && array_length(_p.stages) > 0)
+        {
+            _gh = _p.stages[0].heights;
+            var _hc = stage_cells(_p, _gh);
+            for (var k = 0; k < 1000; k++)
+            {
+                if (_hc.scr[k] < 0) { continue; }
+                px_rect((k mod 40) * 8, (k div 40) * 8 - 12, 8, 8, c64col(_p.background));
+                draw_c64_char(_hc.scr[k], (k mod 40) * 8, (k div 40) * 8 - 12, 1, c64col(_hc.col[k]));
+            }
+        }
         for (var a = 0; a < array_length(_p.actors); a++)
         {
             var _ac = _p.actors[a];
-            tpl_prev_sprite(_p, _ac.sprite, _ac.x - 24, _ac.y - 50 - 12, _ac.colour, _p.mc1, _p.mc2);
+            if (_p.levels_on && _ac.from_level > 1) { continue; }
+            var _ay = _ac.y - 50;
+            if (role_on_ground(_ac.role))
+            {
+                var _col = clamp((_ac.x - 12) div 8, 0, 39);
+                _ay = (is_undefined(_gh) ? 200 : min(200, _gh[_col])) - sprite_feet(_ac.sprite) - 1;
+            }
+            tpl_prev_sprite(_p, _ac.sprite, _ac.x - 24, _ay - 12, _ac.colour, _p.mc1, _p.mc2);
         }
         proj = _keep;
     }

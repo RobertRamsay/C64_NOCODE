@@ -9,7 +9,8 @@ function templates_init()
         { name : "Jump Quest", kind : "Scrolling platformer", desc : "Run, jump and climb ladders through a long scrolling level. Coins, spikes, walkers and bats." },
         { name : "Castle Rooms", kind : "Flip-screen platformer", desc : "Classic room-by-room platformer: the screen flips when you leave the edge." },
         { name : "Rock Digger", kind : "Cave digger (Boulder Dash style)", desc : "Dig through dirt, collect diamonds, avoid falling boulders and fireflies, then reach the exit." },
-        { name : "Maze Raider", kind : "Top-down adventure", desc : "8-way scrolling maze with treasure, shooting and roaming monsters." }
+        { name : "Maze Raider", kind : "Top-down adventure", desc : "8-way scrolling maze with treasure, shooting and roaming monsters." },
+        { name : "Gem Hills", kind : "Single screen, 4 levels", desc : "Hop over hills to grab 4 gems a level. A title, level cards and more ghosts." }
     ];
 }
 
@@ -700,6 +701,7 @@ function template_build(_i)
         case 4: return tpl_jump_quest(true);
         case 5: return tpl_rock_digger();
         case 6: return tpl_maze_raider();
+        case 7: return tpl_gem_hills();
     }
     return project_new();
 }
@@ -1003,5 +1005,114 @@ function tpl_maze_raider()
     }
     array_push(_p.levels, _lv);
     _p.win_text = "ESCAPED WITH THE GOLD! - PRESS FIRE";
+    return _p;
+}
+
+/// Gem Hills: a single-screen game with 4 levels of hills (Levels page). The gems sit on
+/// ledges that are at the same place on every level; the hills between them get steeper.
+function tpl_gem_hills()
+{
+    var _p = project_example();
+    _p.name = "Gem Hills";
+    _p.border = 6;
+    _p.background = 6;
+    // a starry sky (the hills are drawn over the bottom of it)
+    _p.chars = array_create(1000, 32);
+    _p.cols = array_create(1000, 1);
+    for (var r = 2; r < 16; r++)
+    {
+        for (var c = 0; c < 40; c++)
+        {
+            var _h = tpl_hash(c, r, 7);
+            if (_h < 0.05) { _p.chars[r * 40 + c] = 46; _p.cols[r * 40 + c] = (_h < 0.02) ? 1 : 14; }
+            else if (_h < 0.06) { _p.chars[r * 40 + c] = 42; _p.cols[r * 40 + c] = 7; }
+        }
+    }
+
+    // the gems' ledges: column and ground line (pixels from the top), the same on every level
+    var _gc = [7, 16, 26, 35];
+    var _gy = [160, 136, 120, 148];
+    var _seeds = [2101, 2138, 2175, 2212];
+    var _hilly = [35, 65, 95, 125];
+    var _base = [168, 160, 156, 150];
+    _p.levels_on = true;
+    _p.stages = [];
+    for (var l = 0; l < 4; l++)
+    {
+        var _s = stage_new(_seeds[l]);
+        _s.hilly = _hilly[l];
+        _s.base = _base[l];
+        var _hh = stage_terrain(_s.seed, _s.hilly, _s.base);
+        for (var g = 0; g < 4; g++)
+        {
+            // a flat ledge 3 columns wide, eased into the hills on each side
+            for (var d = -5; d <= 5; d++)
+            {
+                var _c = _gc[g] + d;
+                if (_c < 0 || _c > 39) { continue; }
+                var _t = clamp((abs(d) - 1) / 4, 0, 1);
+                _hh[_c] = round(lerp(_gy[g], _hh[_c], _t));
+            }
+        }
+        // the start: flat ground on the left
+        for (var c2 = 0; c2 < 4; c2++) { _hh[c2] = _base[l]; }
+        for (var c3 = 0; c3 < 40; c3++) { _hh[c3] = clamp(_hh[c3], STAGE_TOP, STAGE_LOW); }
+        _s.heights = _hh;
+        array_push(_p.stages, _s);
+    }
+    _p.goal_on = true;
+    _p.goal_label = "GEMS";
+    _p.goal = 4;
+    _p.title_on = true;
+    _p.title1 = "GEM HILLS";
+    _p.title2 = "PRESS FIRE TO START";
+    _p.lev_text = "LEVEL";
+    _p.lives = 5;
+
+    // where the gem's lowest pixel row is, so it can float just above its ledge
+    var _gem = _p.sprites[3];
+    var _feet = 0;
+    for (var q = 251; q >= 0; q--) { if (_gem.mcp[q] != 0) { _feet = q div 12; break; } }
+
+    var _hero = actor_new("Hero");
+    _hero.sprite = 0; _hero.colour = 7; _hero.role = 6; _hero.speed = 2; _hero.x = 36; _hero.y = 120;
+    _p.actors = [_hero];
+    for (var g2 = 0; g2 < 4; g2++)
+    {
+        var _a = actor_new("Gem " + string(g2 + 1));
+        var _gcol = [3, 7, 10, 13];
+        _a.sprite = 3; _a.colour = _gcol[g2]; _a.role = 5; _a.speed = 1;
+        _a.x = _gc[g2] * 8 + 16;
+        _a.y = _gy[g2] - 3 - _feet + 50;
+        array_push(_p.actors, _a);
+    }
+    var _walk = actor_new("Walking ghost");
+    _walk.sprite = 1; _walk.colour = 4; _walk.role = 7; _walk.speed = 1; _walk.x = 200; _walk.y = 100;
+    var _chase = actor_new("Chasing ghost");
+    _chase.sprite = 1; _chase.colour = 2; _chase.role = 4; _chase.speed = 1; _chase.x = 300; _chase.y = 70; _chase.from_level = 2;
+    var _bounce = actor_new("Bouncing ghost");
+    _bounce.sprite = 1; _bounce.colour = 8; _bounce.role = 1; _bounce.speed = 1; _bounce.x = 170; _bounce.y = 80; _bounce.from_level = 3;
+    array_push(_p.actors, _walk, _chase, _bounce);
+
+    // the rules: gems count towards the goal, ghosts cost a life
+    _p.groups = [group_new("Gems"), group_new("Ghosts"), group_new("Losing")];
+    _p.rules = [];
+    var _r;
+    for (var g3 = 0; g3 < 4; g3++)
+    {
+        _r = rule_new(); _r.group = 0; _r.when = 0; _r.a = 0; _r.b = 1 + g3; _r.act = 0; _r.value = 10;
+        array_push(_r.more, { act : 6, target : 1 + g3, value : 0 }, { act : 20, target : 0, value : 0 }, { act : 2, target : 0, value : 0 });
+        array_push(_p.rules, _r);
+    }
+    for (var k = 5; k <= 7; k++)
+    {
+        _r = rule_new(); _r.group = 1; _r.when = 0; _r.a = 0; _r.b = k; _r.act = 1;
+        array_push(_r.more, { act : 4, target : 0, value : 0 }, { act : 3, target : 0, value : 0 }, { act : 2, target : 0, value : 6 });
+        array_push(_p.rules, _r);
+    }
+    _r = rule_new(); _r.group = 2; _r.when = 4; _r.act = 10; array_push(_p.rules, _r);
+    _p.win_text = "ALL THE GEMS ARE YOURS! - PRESS FIRE";
+    // the starter song plays on every level (the same song carries on without starting again)
+    for (var m = 0; m < 4; m++) { _p.level_song[m] = 0; }
     return _p;
 }
