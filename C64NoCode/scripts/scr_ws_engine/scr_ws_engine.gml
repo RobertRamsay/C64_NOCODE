@@ -107,6 +107,13 @@ function tile_remove(_idx)
 {
     if (_idx <= 0) { return; }
     array_delete(proj.tiles, _idx, 1);
+    // what tiles leave behind points at the same tiles
+    for (var b = 0; b < array_length(proj.tiles); b++)
+    {
+        var _bt = proj.tiles[b];
+        if (_bt.becomes == _idx) { _bt.becomes = 0; }
+        else if (_bt.becomes > _idx) { _bt.becomes -= 1; }
+    }
     for (var l = 0; l < array_length(proj.levels); l++)
     {
         var _m = proj.levels[l].map;
@@ -753,173 +760,6 @@ function ws_charset_draw(_x1, _y1, _x2, _y2)
 }
 
 // ---------------------------------------------------------------- tiles
-
-function ws_tiles_draw(_x1, _y1, _x2, _y2)
-{
-    var _nt = array_length(proj.tiles);
-    tile_sel = clamp(tile_sel, 0, _nt - 1);
-    var _t = proj.tiles[tile_sel];
-    var _lw = 260;
-    ui_panel(_x1, _y1, _x1 + _lw, _y2, "Tiles  (" + string(_nt) + " / 64)");
-    var _content = _nt * 46 + 10;
-    var _off = ui_scroll_begin("tiles_list", _x1 + 8, _y1 + 50, _x1 + _lw - 8, _y2 - 140, _content);
-    for (var i = 0; i < _nt; i++)
-    {
-        var _ry = _y1 + 54 + i * 46 - _off;
-        if (_ry < _y1 + 20 || _ry > _y2 - 140) { continue; }
-        var _id = "tile_slot_" + string(i);
-        var _hot = ui_register(_id, _x1 + 12, _ry, _x1 + _lw - 18, _ry + 40, proj.tiles[i].name + "|Click to edit this tile.");
-        if (tile_sel == i) { ui_rrect(_x1 + 12, _ry, _x1 + _lw - 18, _ry + 40, 9, global.TH.accent, global.TH.accent_dark, 0.9); }
-        else
-        {
-            if (_hot) { ui_rrect(_x1 + 12, _ry, _x1 + _lw - 18, _ry + 40, 9, global.TH.btn_hot_top, global.TH.btn_hot_bot, 1); }
-        }
-        draw_tile_img(i, _x1 + 18, _ry + 4, 32);
-        ui_text(_x1 + 60, _ry + 12, string(i) + "  " + ui_text_fit(proj.tiles[i].name, global.f_bold, _lw - 110), global.TH.text, fa_left, fa_middle, global.f_bold, 1);
-        var _att = "";
-        for (var a = 0; a < 8; a++) { if ((proj.tiles[i].attr & (1 << a)) != 0) { _att += global.ATTR_NAMES[a] + " "; } }
-        if (_att == "") { _att = "Background"; }
-        ui_text(_x1 + 60, _ry + 29, ui_text_fit(_att, global.f_small, _lw - 110), global.TH.text_dim, fa_left, fa_middle, global.f_small, 1);
-        if (_hot && ui_pressed) { tile_sel = i; ui_take_click(); }
-    }
-    ui_scroll_end("tiles_list", _x1 + 8, _y1 + 50, _x1 + _lw - 8, _y2 - 140, _content);
-    var _by = _y2 - 128;
-    if (ui_button("tile_add", _x1 + 16, _by, _lw - 32, 34, "Add tile", "Add tile|Adds a new tile (up to 64). Build it from 4 characters and give it a job with the ticks on the right.", BTN_ACCENT))
-    {
-        if (_nt < 64)
-        {
-            undo_mark("tadd" + string(current_time));
-            array_push(proj.tiles, tile_new("Tile " + string(_nt)));
-            tile_sel = _nt;
-            atlas_dirty = true;
-        }
-    }
-    if (ui_button("tile_dup", _x1 + 16, _by + 42, _lw - 32, 34, "Duplicate", "Duplicate|Copies the selected tile.", BTN_NORMAL))
-    {
-        if (_nt < 64)
-        {
-            undo_mark("tdup" + string(current_time));
-            var _cp = struct_overlay(tile_new(""), json_parse(json_stringify(_t)));
-            _cp.name += " 2";
-            array_push(proj.tiles, _cp);
-            tile_sel = _nt;
-            atlas_dirty = true;
-        }
-    }
-    if (ui_button("tile_del", _x1 + 16, _by + 84, _lw - 32, 34, "Remove", "Remove tile|Deletes the tile; maps that used it get the empty tile 0 instead. Tile 0 is always the empty background.", BTN_DANGER))
-    {
-        if (tile_sel > 0)
-        {
-            undo_mark("tdel" + string(current_time));
-            tile_remove(tile_sel);
-            tile_sel -= 1;
-        }
-    }
-
-    // centre: big tile + char picker
-    var _cx1 = _x1 + _lw + 12;
-    var _rw = 300;
-    var _cx2 = _x2 - _rw - 12;
-    ui_panel(_cx1, _y1, _cx2, _y2, "Tile " + string(tile_sel) + ": " + _t.name);
-    var _big = 160;
-    var _bx = _cx1 + 30;
-    var _byy = _y1 + 64;
-    ui_rrect(_bx - 8, _byy - 8, _bx + _big + 8, _byy + _big + 8, 10, c_black, c_black, 0.35);
-    draw_tile_img(tile_sel, _bx, _byy, _big);
-    for (var q = 0; q < 4; q++)
-    {
-        var _qx = _bx + (q mod 2) * (_big / 2);
-        var _qy = _byy + (q div 2) * (_big / 2);
-        var _qh = ui_register("tile_q" + string(q), _qx, _qy, _qx + _big / 2 - 1, _qy + _big / 2 - 1, "Tile corner|A tile is 2 x 2 characters. Click a corner, then click a character below to put it there.");
-        if (q == tile_quad) { ui_rrect_line(_qx, _qy, _qx + _big / 2, _qy + _big / 2, 4, global.TH.warn, 1, 2); }
-        else { if (_qh) { ui_rrect_line(_qx, _qy, _qx + _big / 2, _qy + _big / 2, 4, global.TH.accent, 1, 1); } }
-        if (_qh && ui_pressed) { tile_quad = q; ui_take_click(); }
-        ui_text(_qx + 4, _qy + 2, string(_t.c[q]), c_white, fa_left, fa_top, global.f_small, 0.8);
-    }
-    ui_text_wrap(_bx + _big + 30, _byy, "Click a corner of the tile, then pick the character that goes there. Edit the character shapes on the Charset page.", global.TH.text_dim, _cx2 - _bx - _big - 60, global.f_body, 1);
-    if (ui_button("tile_editchar", _bx + _big + 30, _byy + 90, 200, 32, "Edit this character", "Edit character|Jumps to the Charset page with this corner's character selected.", BTN_NORMAL))
-    {
-        ch_sel = _t.c[tile_quad];
-        ws_set(WS_CHARSET);
-    }
-    var _gy = _byy + _big + 40;
-    var _cell = min(20, floor((_cx2 - _cx1 - 60) / 16));
-    var _gx = floor((_cx1 + _cx2 - _cell * 16) / 2);
-    ui_heading(_gx, _gy - 20, "Characters");
-    ui_inset(_gx - 6, _gy - 6, _gx + _cell * 16 + 6, _gy + _cell * 16 + 6, 8);
-    var _tmc = (proj.eng.mc && _t.mc);
-    gpu_set_texfilter(false);
-    draw_set_colour(c64col(proj.eng.bg));
-    draw_rectangle(_gx, _gy, _gx + _cell * 16 - 1, _gy + _cell * 16 - 1, false);
-    if (_tmc)
-    {
-        for (var cc = 0; cc < 256; cc++) { draw_pchar(cc, _gx + (cc mod 16) * _cell + (_cell - 16) / 2, _gy + (cc div 16) * _cell + (_cell - 16) / 2, 2, _t.col, true); }
-    }
-    else
-    {
-        pchars_refresh();
-        draw_sprite_ext(pchars_sprite, 0, _gx, _gy, _cell / 8, _cell / 8, 0, c64col(_t.col), 1);
-    }
-    gpu_set_texfilter(true);
-    var _gh = ui_register("tile_chars", _gx, _gy, _gx + _cell * 16 - 1, _gy + _cell * 16 - 1, "Characters|Click to place a character in the selected tile corner.");
-    var _cur = _t.c[tile_quad];
-    ui_rrect_line(_gx + (_cur mod 16) * _cell - 2, _gy + (_cur div 16) * _cell - 2, _gx + (_cur mod 16 + 1) * _cell + 2, _gy + (_cur div 16 + 1) * _cell + 2, 4, global.TH.warn, 1, 2);
-    if (_gh)
-    {
-        var _hc = clamp(floor((ui_mx - _gx) / _cell), 0, 15) + clamp(floor((ui_my - _gy) / _cell), 0, 15) * 16;
-        ui_help_body = "Character " + string(_hc) + ". Click to use it in this corner.";
-        if (ui_pressed)
-        {
-            undo_mark("tchar" + string(current_time));
-            _t.c[tile_quad] = _hc;
-            tile_quad = (tile_quad + 1) mod 4;
-            atlas_dirty = true;
-            ui_take_click();
-        }
-    }
-
-    // right: properties
-    var _px = _x2 - _rw;
-    ui_panel(_px, _y1, _x2, _y2, "Tile settings");
-    var _fx = _px + 20;
-    var _fw = _rw - 40;
-    var _y = _y1 + 56;
-    ui_heading(_fx, _y, "Name");
-    set_val(_t, "name", ui_textfield("tile_name", _fx, _y + 18, _fw, 32, _t.name, 20, "Tile name|Shown in the map editor palette."), "tname");
-    _y += 62;
-    ui_heading(_fx, _y, "Colour");
-    if (set_val(_t, "col", ui_colour_drop("tile_col", _fx, _y + 18, _fw, 30, _t.col, "Tile colour|The colour of this tile's characters."), "tcol")) { atlas_dirty = true; }
-    _y += 58;
-    if (proj.eng.mc)
-    {
-        if (set_val(_t, "mc", ui_toggle("tile_mc", _fx, _y, "Multicolour tile", _t.mc, "Multicolour|Draw this tile's characters in multicolour (needs multicolour characters on the World page)."), "tmc")) { atlas_dirty = true; }
-        _y += 34;
-    }
-    ui_heading(_fx, _y, "What this tile does");
-    _y += 20;
-    for (var ab = 0; ab < 8; ab++)
-    {
-        var _on = (_t.attr & (1 << ab)) != 0;
-        var _nv = ui_toggle("tile_attr" + string(ab), _fx + (ab mod 2) * (_fw div 2), _y + (ab div 2) * 32, global.ATTR_NAMES[ab], _on, global.ATTR_HELP[ab]);
-        if (_nv != _on)
-        {
-            undo_mark("tattr" + string(current_time));
-            if (_nv) { _t.attr = _t.attr | (1 << ab); }
-            else { _t.attr = _t.attr & ~(1 << ab); }
-        }
-    }
-    _y += 4 * 32 + 10;
-    if ((_t.attr & TA_COLLECT) != 0)
-    {
-        ui_heading(_fx, _y, "Points when collected");
-        set_val(_t, "score", ui_stepper("tile_score", _fx, _y + 18, _fw, _t.score, 0, 99, "Points|Added to the score when the player collects this tile."), "tscore");
-        _y += 60;
-    }
-    if (tile_sel == 0)
-    {
-        ui_text_wrap(_fx, _y, "Tile 0 is the empty background. Collected and dug tiles turn into tile 0.", global.TH.text_faint, _fw, global.f_small, 1);
-    }
-}
 
 // ---------------------------------------------------------------- map
 

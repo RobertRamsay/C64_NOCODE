@@ -138,6 +138,10 @@ ch_drawing = false;
 ch_clip = [];
 tile_sel = 1;
 tile_quad = 0;
+// the Tiles page: the tab (0 tile set, 1 characters), drawing, the multicolour pen
+tile_page = 0;
+tile_drawing = false;
+tile_pen_mc = 3;
 map_level = 0;
 map_tool = 0;
 map_tile = 1;

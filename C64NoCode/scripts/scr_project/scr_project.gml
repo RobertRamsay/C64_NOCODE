@@ -352,7 +352,7 @@ function project_from_loaded(_raw)
     {
         for (var t = 0; t < min(64, array_length(_lt)); t++)
         {
-            var _tl = struct_overlay(tile_new("Tile"), _lt[t]);
+            var _tl = tile_from_loaded(_lt[t]);
             if (!is_array(_tl.c) || array_length(_tl.c) != 4) { _tl.c = [32, 32, 32, 32]; }
             array_push(_tiles, _tl);
         }

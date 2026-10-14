@@ -71,6 +71,7 @@
     {"id":{"name":"scr_ws_shell","path":"scripts/scr_ws_shell/scr_ws_shell.yy",},},
     {"id":{"name":"scr_ws_sound","path":"scripts/scr_ws_sound/scr_ws_sound.yy",},},
     {"id":{"name":"scr_ws_sprites","path":"scripts/scr_ws_sprites/scr_ws_sprites.yy",},},
+    {"id":{"name":"scr_ws_tiles","path":"scripts/scr_ws_tiles/scr_ws_tiles.yy",},},
   ],
   "resourceType":"GMProject",
   "resourceVersion":"2.0",

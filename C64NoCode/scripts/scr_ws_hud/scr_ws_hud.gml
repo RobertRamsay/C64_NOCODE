@@ -111,7 +111,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
     var _addn = ["+ Field"];
     for (var t = 0; t < hud_type_count(_p); t++) { array_push(_addn, _types[t]); }
     var _bw = floor((_fw - 8) / 2);
-    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal and the level number.");
+    var _add = ui_dropdown("hud_add", _fx, _y2 - 48, _bw, 32, _addn, 0, "Add a field|Text, the score, lives - and in a map game the level goal, the level number and the tile carried (Dig and place).");
     if (_add > 0 && _nf < HUD_FIELDS_MAX && _u.on)
     {
         undo_mark("hudadd" + string(current_time));
@@ -125,6 +125,7 @@ function ws_hud_draw(_x1, _y1, _x2, _y2)
             case 2: _nfd.label = "LIVES "; _nfd.digits = 1; break;
             case 3: _nfd.label = "GEMS "; break;
             case 4: _nfd.label = "LEVEL "; _nfd.digits = 1; break;
+            case 5: _nfd.label = ""; break;
         }
         array_push(_u.fields, _nfd);
         hud_sel = array_length(_u.fields) - 1;

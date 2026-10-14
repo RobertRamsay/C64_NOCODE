@@ -115,9 +115,10 @@ function tut_init()
         tut_step(WS_MAP, "map_tool_4", "Player start", "Click where the player begins the level."),
         tut_step(WS_MAP, "map_win", "Screen-size guide", "The dotted box shows how much of the map the player sees at once."),
         // ---------- TILES ----------
-        tut_step(WS_TILES, "tile_q0", "Tiles are 2 x 2 characters", "Click a corner, then click a character below to put it there."),
-        tut_step(WS_TILES, "tile_chars", "Character picker", "These are the characters from your charset. Draw new ones on the Charset page."),
-        tut_step(WS_TILES, "tile_attr0", "What a tile does", "Tick Solid for walls, Deadly for spikes, Collect for coins and gems, Exit for doors, Ladder, One-way platforms, Diggable dirt and Falls for boulders."),
+        tut_step(WS_TILES, "tile_pick_1", "The tile set", "Pick a tile here. New tile starts as a copy of the one picked; tile 0 is the empty background."),
+        tut_step(WS_TILES, "tile_canvas", "Draw it", "A tile is 2 x 2 characters. Draw straight onto it - a character another tile shares is copied first, so only this tile changes."),
+        tut_step(WS_TILES, "tile_tab_1", "Characters", "Or pick which of the 256 characters goes in each corner, to build tiles from shared pieces."),
+        tut_step(WS_TILES, "tile_attr0", "What a tile does", "Tick Solid for walls, Deadly for spikes, Collect for coins and gems, Exit for doors, Ladder, One-way platforms, Diggable dirt and Falls for boulders. Below: points, the level goal, a sound and the tile it leaves behind."),
         // ---------- CHARSET ----------
         tut_step(WS_CHARSET, "ch_grid", "The character set", "All 256 characters. Pick one to edit."),
         tut_step(WS_CHARSET, "ch_edit", "Draw pixels", "Left-click draws, right-click rubs out. Every tile using this character updates straight away."),

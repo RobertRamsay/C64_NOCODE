@@ -55,6 +55,8 @@ function eng_settings_new()
         weapon : 1, bspeed : 6, firedir : 2, cooldown : 10,
         pspr : 0, pcol : 7, bspr : 1, bcol : 1, ebspr : 2, ebcol : 10, lives : 3,
         sfx_shoot : 1, sfx_hit : 2, sfx_die : 6, sfx_collect : 0, sfx_jump : 3, sfx_exit : 5,
+        // the Tiles page: fire + a direction digs, fire puts the tile carried down (platform / top-down)
+        dig_place : false,
         // the Animate page: the player, its shot and the enemies' shot (enemy types hold their own)
         anim_p : anim_holder_new(), anim_b : anim_holder_new(), anim_eb : anim_holder_new()
     };
@@ -62,7 +64,9 @@ function eng_settings_new()
 
 function tile_new(_name)
 {
-    return { name : _name, c : [32, 32, 32, 32], col : 1, mc : false, attr : 0, score : 0 };
+    // goal: -1 = automatic (collectables count), 0 / 1; sound: -1 = automatic (Collect: the World page's
+    // collect sound, dug: none); becomes: the tile left behind; hard: dig time in 50ths (Dig and place)
+    return { name : _name, c : [32, 32, 32, 32], col : 1, mc : false, attr : 0, score : 0, goal : -1, sound : -1, becomes : 0, hard : 12 };
 }
 
 function enemy_new(_name)
@@ -192,7 +196,9 @@ function engine_codegen(_p)
     var _wrows = clamp(_e.wrows, 6, 24 - _wtop - _sv);
     var _autodiv = [0, 1, 3];
     var _gravdiv = [0, 1, 3];
+    var _dig = tile_dig_on(_p);
     var _wpn = clamp(_e.weapon, 0, 4);
+    if (_dig) { _wpn = 0; }                 // fire digs and places instead
     var _mcbit = 0;
     if (_e.mc) { _mcbit = 16; }
     var _cols = 8;
@@ -219,7 +225,7 @@ function engine_codegen(_p)
         ["SCROLL_H", _sh], ["SCROLL_V", _sv], ["FLIP", _flip], ["FOLLOW", _follow],
         ["AUTO_H", _auto_h], ["AUTO_V", _auto_v], ["AUTODIV", _autodiv[clamp(_e.auto_speed, 0, 2)]],
         ["WTOP", _wtop], ["WROWS", _wrows], ["HUDROW", 0], ["FULLCOL", _e.fullcol],
-        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1],
+        ["WINCOL", eng_wincol(_e)], ["HUDCOL", _e.hudcol], ["COLS_D016", _cols | _mcbit], ["HUD_D016", _hud_on ? 8 : (8 | _mcbit)], ["HUD_STD", _hud_on ? 0 : 1], ["DIG_PLACE", _dig], ["HUD_COLN", (_dig && !_hud_on) ? 80 : 40],
         ["BORDER", _e.border], ["BG", _e.bg], ["MC1", _e.mc1], ["MC2", _e.mc2], ["SMC1", _e.smc1], ["SMC2", _e.smc2],
         ["PSPEED", clamp(_e.pspeed, 1, 4)], ["JUMPV", clamp(_e.jumpv, 2, 9)], ["GRAVDIV", _gravdiv[clamp(_e.grav, 0, 2)]],
         ["MAXFALL", clamp(_e.maxfall, 2, 8)], ["WEAPON_ON", (_wpn > 0)], ["WEAPON_DOUBLE", (_wpn == 2)], ["WEAPON_SPREAD", (_wpn == 3)],
@@ -234,7 +240,7 @@ function engine_codegen(_p)
     if (_wpn == 4) { _cd = max(2, _cd div 3); }
     array_push(_cfg, ["FIRE_COOLDOWN", _cd]);
     var _jm = 16;
-    if (_e.jump_up) { _jm = 1; }
+    if (_e.jump_up || _dig) { _jm = 1; }
     array_push(_cfg, ["JUMPMASK", _jm]);
     var _offx = 24;
     if (_sh == 1) { _offx = 31; }
@@ -276,6 +282,7 @@ function engine_codegen(_p)
     array_push(L, "; ---------------- data ----------------", "level_data:");
     // tiles (64)
     var _nt = min(64, array_length(_p.tiles));
+    tile_emit_tables(L, _p, _nt, _dig);
     var _tabs = ["tc0", "tc1", "tc2", "tc3", "tcol", "tattr", "tscore"];
     for (var tb = 0; tb < 7; tb++)
     {

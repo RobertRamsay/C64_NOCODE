@@ -24,13 +24,13 @@ function hud_frame_styles()
 
 function hud_field_types()
 {
-    return ["Text", "Score", "Lives", "Goal", "Level"];
+    return ["Text", "Score", "Lives", "Goal", "Level", "Tile carried"];
 }
 
 /// Field types this kind of game has (Goal and Level belong to map games)
 function hud_type_count(_p)
 {
-    return (_p.game_type == 1) ? 5 : 3;
+    return (_p.game_type == 1) ? 6 : 3;
 }
 
 /// The custom HUD of a new project: off (the standard HUD is used)
@@ -84,7 +84,7 @@ function hud_from_loaded(_raw)
             var _src = _u.fields[f];
             if (!is_struct(_src)) { continue; }
             var _fd = struct_overlay(hud_field_new(0), _src);
-            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 4) : 0;
+            _fd.type = is_numeric(_fd.type) ? clamp(floor(_fd.type), 0, 5) : 0;
             if (!is_string(_fd.label)) { _fd.label = ""; }
             _fd.label = string_upper(string_copy(_fd.label, 1, HUD_LABEL_MAX));
             _fd.col = is_numeric(_fd.col) ? clamp(floor(_fd.col), 0, 39) : 0;
@@ -359,6 +359,11 @@ function hud_field_value(_p, _f, _sample)
             return "05/" + string_replace_all(string_format(_need, 2, 0), " ", "0");
         case 4:
             return string_replace_all(string_format(1, _d, 0), " ", "0");
+        case 5:
+            // the tile carried (Tiles page: Dig and place): its first 4 letters and how many
+            if (!_sample) { return "     00"; }
+            var _tn = (array_length(_p.tiles) > 1) ? _p.tiles[1].name : "DIRT";
+            return string_upper(string_copy(_tn + "    ", 1, 4)) + " 03";
     }
     return "";
 }
@@ -627,6 +632,14 @@ function hud_emit_map(L, _p)
                 array_push(L, " lda need", " beq hud_g" + string(v), " lda need_got", " jsr bin2dec", " stx " + _a, " sta SCR+" + string(_lv.pos + 1));
                 array_push(L, " lda need", " jsr bin2dec", " stx SCR+" + string(_lv.pos + 3), " sta SCR+" + string(_lv.pos + 4), "hud_g" + string(v) + ":");
                 break;
+            case 5:
+                array_push(L, " lda carry_n", " beq hud_n" + string(v), " lda carry_t", " asl", " asl", " tax");
+                for (var c5 = 0; c5 < 4; c5++) { array_push(L, " lda tname+" + string(c5) + ",x", " sta SCR+" + string(_lv.pos + c5)); }
+                array_push(L, " lda carry_n", " jsr bin2dec", " stx SCR+" + string(_lv.pos + 5), " sta SCR+" + string(_lv.pos + 6), " jmp hud_m" + string(v));
+                array_push(L, "hud_n" + string(v) + ":", " lda #32");
+                for (var c6 = 0; c6 < 4; c6++) { array_push(L, " sta SCR+" + string(_lv.pos + c6)); }
+                array_push(L, "hud_m" + string(v) + ":");
+                break;
             case 4:
                 array_push(L, " lda level", " clc", " adc #1", " jsr bin2dec");
                 if (_d == 2) { array_push(L, " stx " + _a, " sta SCR+" + string(_lv.pos + 1)); }
@@ -654,6 +667,7 @@ function hud_warnings(_p)
     {
         var _fd = _u.fields[f];
         if (_fd.type >= hud_type_count(_p)) { array_push(_w, "Custom HUD: a " + hud_field_types()[_fd.type] + " field only works in a map game - it shows its label only."); }
+        if (_fd.type == 5 && !tile_dig_on(_p)) { array_push(_w, "Custom HUD: the Tile carried field shows nothing until Dig and place is on (Tiles page)."); }
         if (_fd.row >= hud_rows(_p, _u)) { array_push(_w, "Custom HUD: a field is on row " + string(_fd.row) + ", below the panel - it isn't shown."); }
     }
     if (_p.game_type == 0)

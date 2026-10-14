@@ -436,6 +436,9 @@ level_init:
     sta $d015
     sta game_state
     sta need_got
+    sta carry_n
+    sta dp_cnt
+    sta dp_last
     sta pend
     sta cave_row
     sta fcount
@@ -1716,6 +1719,9 @@ player_update:
     beq pu_go
     rts
 pu_go:
+    .if DIG_PLACE
+    jsr dig_place
+    .endif
     ldx #0
     lda joy
     and #15
@@ -1757,7 +1763,7 @@ pu_nf:
     beq pu_nc
     txa
     pha
-    lda #0
+    lda tbecome,x
     jsr set_tile
     pla
     tax
@@ -1791,12 +1797,18 @@ pu_ns:
     rts
     .endif
 
-; X = tile index collected
+; X = tile index collected or dug: its points, the level goal (if it counts), its sound
 collect_tile:
+    stx t7
     lda tscore,x
     jsr add_score
+    ldx t7
+    lda tflag,x
+    and #1
+    beq ct_ng
     inc need_got
-    lda #SFX_COLLECT
+ct_ng:
+    lda tsfx,x
     jmp play_sfx
 
 ; ---------- free 8-way movement (shooter / top-down) ----------
@@ -2163,6 +2175,140 @@ og_n:
     rts
     .endif
 
+; ---------- dig and place (Tiles page, ported from ADAM) ----------
+; fire + a direction digs the tile that way (held for its dig time), fire on its own
+; puts the tile carried down in front; while fire is held the player stands still
+    .if DIG_PLACE
+dig_place:
+    lda joy
+    and #16
+    bne dp_f
+    sta dp_last
+    sta dp_cnt
+    rts
+dp_f:
+    lda joy
+    and #15
+    sta dp_dirs
+    lda #16
+    sta joy
+    lda dp_dirs
+    bne dp_dig
+    lda dp_last
+    bne dp_rt
+    lda #1
+    sta dp_last
+    jmp dp_put
+dp_rt:
+    rts
+dp_dig:
+    lda #1
+    sta dp_last
+    ldx #0
+    ldy #11
+    lda dp_dirs
+    and #4
+    beq dp_d1
+    lda #4
+    bne dp_pt
+dp_d1:
+    lda dp_dirs
+    and #8
+    beq dp_d2
+    lda #19
+    bne dp_pt
+dp_d2:
+    ldy #2
+    lda dp_dirs
+    and #1
+    bne dp_d3
+    ldy #21
+dp_d3:
+    lda #12
+dp_pt:
+    jsr ent_point
+    lda t3
+    bmi dp_no
+    jsr tile_at
+    and #A_DIG
+    beq dp_no
+    lda t4
+    cmp dp_cx
+    bne dp_new
+    lda t5
+    cmp dp_cy
+    bne dp_new
+    inc dp_cnt
+    lda dp_cnt
+    cmp thard,x
+    bcc dp_r
+    stx dp_t
+    lda tbecome,x
+    jsr set_tile
+    ldx dp_t
+    jsr collect_tile
+    lda dp_t
+    cmp carry_t
+    beq dp_inc
+    sta carry_t
+    lda #0
+    sta carry_n
+dp_inc:
+    lda carry_n
+    cmp #99
+    bcs dp_no
+    inc carry_n
+dp_no:
+    lda #0
+    sta dp_cnt
+    lda #$ff
+    sta dp_cx
+dp_r:
+    rts
+dp_new:
+    lda t4
+    sta dp_cx
+    lda t5
+    sta dp_cy
+    lda #0
+    sta dp_cnt
+    rts
+; the tile carried goes in front of the player, into an empty cell
+dp_put:
+    lda carry_n
+    beq dp_r2
+    lda e_dir
+    and #7
+    tay
+    lda dp_py,y
+    sta t6
+    lda dp_px,y
+    ldy t6
+    ldx #0
+    jsr ent_point
+    lda t3
+    bmi dp_r2
+    jsr tile_at
+    and #A_SOLID
+    bne dp_r2
+    cpx #0
+    bne dp_r2
+    lda t5
+    cmp map_h
+    bcs dp_r2
+    lda carry_t
+    jsr set_tile
+    dec carry_n
+    ldx carry_t
+    lda tsfx,x
+    jmp play_sfx
+dp_r2:
+    rts
+; the point in front of the player for each direction (up, up-right, right ... up-left)
+dp_px: .byte 12,19,19,19,12,4,4,4
+dp_py: .byte 2,11,11,11,21,11,11,11
+    .endif
+
 ; ---------- cave digger (grid moves of 16px) ----------
     .if KIND_CAVE
 pl_cave:
@@ -2262,19 +2408,16 @@ pc_nx:
     rts
 pc_nd:
     lda cv_attr
-    and #A_COLLECT
-    beq pc_nc
-    ldx cv_tile
-    jsr collect_tile
-pc_nc:
-    lda cv_attr
     and #(A_DIG+A_COLLECT)
     beq pc_go
+    ldx cv_tile
+    jsr collect_tile
     lda cv_x
     sta t4
     lda cv_y
     sta t5
-    lda #0
+    ldx cv_tile
+    lda tbecome,x
     jsr set_tile
 pc_go:
     lda #16
@@ -3553,11 +3696,14 @@ hdc:
     lda #HUDCOL
     sta COLR+HUDROW*40,x
     inx
-    cpx #40
+    cpx #HUD_COLN
     bne hdc
     rts
 
 hud_update:
+    .if DIG_PLACE
+    jsr hud_carry
+    .endif
     ; score 6 digits at col 6
     lda score+2
     jsr hud_bcd
@@ -3587,6 +3733,38 @@ hud_update:
 hu_r:
     rts
 
+    .endif
+
+    .if DIG_PLACE
+; the tile carried (Tiles page: Dig and place): its name and how many, row 1
+hud_carry:
+    lda carry_n
+    beq hc_none
+    lda carry_t
+    asl
+    asl
+    tax
+    ldy #0
+hc1:
+    lda tname,x
+    sta SCR+HUDROW*40+41,y
+    inx
+    iny
+    cpy #4
+    bne hc1
+    lda carry_n
+    jsr bin2dec
+    stx SCR+HUDROW*40+46
+    sta SCR+HUDROW*40+47
+    rts
+hc_none:
+    lda #32
+    ldy #6
+hc2:
+    sta SCR+HUDROW*40+41,y
+    dey
+    bpl hc2
+    rts
     .endif
 
 hud_bcd:
@@ -3665,6 +3843,14 @@ map_w:     .fill 1,0
 map_h:     .fill 1,0
 need:      .fill 1,0
 need_got:  .fill 1,0
+carry_t:   .fill 1,0
+carry_n:   .fill 1,0
+dp_cnt:    .fill 1,0
+dp_cx:     .fill 1,0
+dp_cy:     .fill 1,0
+dp_last:   .fill 1,0
+dp_dirs:   .fill 1,0
+dp_t:      .fill 1,0
 nsp:       .fill 1,0
 sp_ptr:    .fill 2,0
 sp_scan:   .fill 1,0
