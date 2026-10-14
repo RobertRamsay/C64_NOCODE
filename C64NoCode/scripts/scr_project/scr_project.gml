@@ -10,12 +10,14 @@ function project_defs_init()
     global.DO_NAMES   = ["Add to score", "Lose a life", "Play a sound", "Flash the border", "Send actor back to start",
                          "Move actor to a random spot", "Hide actor", "Show actor", "Change actor colour",
                          "Change background colour", "Game over", "You win!", "Speed up actor",
-                         "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds"];
+                         "Slow down actor", "Add a life", "Move actor to another actor", "Stop all sounds",
+                         "Play music", "Stop music"];
     global.TEMPLATE_NAMES = ["Player touches enemy: lose a life", "Player touches pickup: score + move pickup",
                              "Score target: you win", "Out of lives: game over", "Every 10 seconds: speed up enemy",
                              "Fire button: play a sound"];
     sid_defs_init();
     machine_defs_init();
+    music_defs_init();
 }
 
 function sprite_new(_name)
@@ -87,7 +89,9 @@ function project_new()
         win_text : "YOU WIN! - PRESS FIRE",
         sound_groups : [],
         groups : [],
-        machine : MACHINE_PAL
+        machine : MACHINE_PAL,
+        songs : [],
+        level_song : array_create(MUS_LEVELS, -1)
     };
     for (var i = 0; i < 8; i++)
     {
@@ -215,6 +219,9 @@ function project_example()
     array_push(_p.rules, _r);
     _r = rule_new(); _r.group = 2; _r.when = 3; _r.n = 200; _r.act = 11; array_push(_p.rules, _r);
     _r = rule_new(); _r.group = 2; _r.when = 4; _r.act = 10; array_push(_p.rules, _r);
+    // a song for the screen (Music page)
+    array_push(_p.songs, music_starter_song("Gem groove"));
+    _p.level_song[0] = 0;
     return _p;
 }
 
@@ -268,6 +275,7 @@ function project_from_loaded(_raw)
     }
     if (!is_numeric(_p.machine)) { _p.machine = MACHINE_PAL; }
     _p.machine = clamp(floor(_p.machine), 0, MACHINE_COUNT - 1);
+    music_from_loaded(_p, _raw);
 
     var _acts = [];
     var _la = _raw[$ "actors"];

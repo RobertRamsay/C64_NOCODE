@@ -7,7 +7,8 @@
 #macro WS_LOGIC 4
 #macro WS_SOUND 5
 #macro WS_BUILD 6
-#macro WS_COUNT 13
+#macro WS_MUSIC 13
+#macro WS_COUNT 14
 
 function ws_set(_i)
 {
@@ -142,7 +143,18 @@ function draw_topbar(_gw)
         }
         else
         {
-            for (var t2 = 0; t2 < _nt; t2++) { _tws[t2] = max(30, floor(_avail / _nt)); }
+            // no room for every label: the longest are cut short first, the short ones stay whole
+            var _lo = 10;
+            var _hi = 240;
+            while (_lo < _hi)
+            {
+                var _mid = (_lo + _hi + 1) div 2;
+                var _sum = 0;
+                for (var t4 = 0; t4 < _nt; t4++) { _sum += min(_tws[t4], _mid) + 12; }
+                if (_sum <= _avail) { _lo = _mid; }
+                else { _hi = _mid - 1; }
+            }
+            for (var t2 = 0; t2 < _nt; t2++) { _tws[t2] = min(_tws[t2], _lo) + 12; }
         }
     }
     var _tsum = 0;
@@ -261,14 +273,14 @@ function ws_tabs()
 {
     if (proj.game_type == 1)
     {
-        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_SOUND, WS_BUILD];
+        return [WS_HOME, WS_TEMPLATES, WS_WORLD, WS_MAP, WS_TILES, WS_CHARSET, WS_ENEMIES, WS_SPRITES, WS_SOUND, WS_MUSIC, WS_BUILD];
     }
-    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_LOGIC, WS_SOUND, WS_BUILD];
+    return [WS_HOME, WS_TEMPLATES, WS_SCREEN, WS_SPRITES, WS_ACTORS, WS_LOGIC, WS_SOUND, WS_MUSIC, WS_BUILD];
 }
 
 function ws_name(_w)
 {
-    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies"];
+    var _n = ["Home", "Screen", "Sprites", "Actors", "Logic", "Sound", "Build", "Templates", "World", "Charset", "Tiles", "Map", "Enemies", "Music"];
     return _n[_w];
 }
 
@@ -287,7 +299,8 @@ function ws_help(_w)
         "Charset|Edit the 256 characters that tiles are built from, in hi-res or multicolour.",
         "Tiles|Build 16x16 tiles from 4 characters and give them jobs: solid, deadly, collectable, exit, ladder and more.",
         "Map|Paint levels with tiles, place enemy spawners and the player's start. Up to 8 levels.",
-        "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot."
+        "Enemies|Design enemy types: picture, movement, speed, toughness, points and how they shoot.",
+        "Music|Make songs for the SID chip's 3 voices: paint ready-made loops onto a timeline, edit the notes, and choose where each song plays. Sound effects borrow voice 1 or 2 while they play."
     ];
     return _h[_w];
 }

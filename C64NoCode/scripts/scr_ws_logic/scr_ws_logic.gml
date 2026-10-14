@@ -145,6 +145,10 @@ function logic_do_phrase(_d, _names, _na)
             if (_d.value < _na) { _vn = _names[_d.value]; }
             return "move " + _tn + " to " + _vn;
         case 16: return "stop all sounds";
+        case 17:
+            if (array_length(proj.songs) == 0) { return "play music (no songs yet)"; }
+            return "play the song '" + proj.songs[clamp(_d.value, 0, array_length(proj.songs) - 1)].name + "'";
+        case 18: return "stop the music";
     }
     return "?";
 }
@@ -416,6 +420,27 @@ function logic_do_row(_d, _rid, _x, _y, _pill, _anames, _snames, _xr)
         if (ui_button(_rid + "_play", _dx + _sw + 8, _dy, 60, 30, "Play", "Preview|Plays this sound so you can hear it.", BTN_GHOST))
         {
             sfx_preview_play(proj.sfx[clamp(_d.value, 0, array_length(proj.sfx) - 1)]);
+        }
+    }
+    if (_act == 17)
+    {
+        if (array_length(proj.songs) == 0)
+        {
+            if (ui_button(_rid + "_mk", _dx, _dy, 150, 30, "Make a song...", "No songs yet|Opens the Music page so you can make one.", BTN_GHOST)) { ws_set(WS_MUSIC); }
+        }
+        else
+        {
+            var _mw = max(100, min(180, _xr - _dx - 68));
+            set_val(_d, "value", ui_dropdown(_rid + "_song", _dx, _dy, _mw, 30, music_song_names(), clamp(_d.value, 0, array_length(proj.songs) - 1), "Song|Which song to play, from the Music page. It replaces the song that is playing."), _rid + "song");
+            var _sv = clamp(_d.value, 0, array_length(proj.songs) - 1);
+            var _pl = (mus_playing && mus_play_what == "logic" + string(_sv));
+            var _pt = "Play";
+            if (_pl) { _pt = "Stop"; }
+            if (ui_button(_rid + "_mplay", _dx + _mw + 8, _dy, 60, 30, _pt, "Preview|Plays this song so you can hear it.", BTN_GHOST))
+            {
+                if (_pl) { music_preview_stop(); }
+                else { music_preview_start(music_compile(proj.songs, proj.level_song), _sv, 0, false, "logic" + string(_sv)); }
+            }
         }
     }
     if (_act == 8 || _act == 9)

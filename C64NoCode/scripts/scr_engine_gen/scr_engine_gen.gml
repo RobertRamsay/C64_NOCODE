@@ -129,6 +129,15 @@ function eng_cycle_budget(_e)
     var _logic = 2600;
     if (_e.kind == KIND_PLAT) { _logic = 4400; }
     if (_e.kind == KIND_SHMUP) { _logic = 3300; }
+    // the music driver: about 650 cycles a frame, up to 2800 when all 3 voices start new loops
+    for (var ms = 0; ms < array_length(proj.level_song); ms++)
+    {
+        if (proj.level_song[ms] >= 0 && proj.level_song[ms] < array_length(proj.songs))
+        {
+            _logic += 800;
+            break;
+        }
+    }
     var _frame = 18200;
     var _full = 9000;
     if (_e.kind == KIND_CAVE) { _full = 11000; }
@@ -427,6 +436,7 @@ function engine_codegen(_p)
 
     // SID sound player + tables (shared with single screen games, scr_sid)
     sid_emit(L, _p);
+    music_emit(L, _p);
 
     // sprite and charset blobs (copied to $E000 / $F000 at start)
     array_push(L, "spr_src:");

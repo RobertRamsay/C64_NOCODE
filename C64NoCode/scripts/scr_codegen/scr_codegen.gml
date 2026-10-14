@@ -78,8 +78,8 @@ function cg_do_lines(L, _p, _d, _tag, na)
             array_push(L, " lda #" + string(_sy), " sta ay+" + _ts, " rts");
             break;
         case 5:
-            array_push(L, " lda $d41b", " clc", " adc #" + string(CG_XMIN), " sta ax_lo+" + _ts, " lda #0", " adc #0", " sta ax_hi+" + _ts);
-            array_push(L, " lda $d41b", " and #127", " clc", " adc #60", " sta ay+" + _ts, " rts");
+            array_push(L, " jsr rnd", " clc", " adc #" + string(CG_XMIN), " sta ax_lo+" + _ts, " lda #0", " adc #0", " sta ax_hi+" + _ts);
+            array_push(L, " jsr rnd", " and #127", " clc", " adc #60", " sta ay+" + _ts, " rts");
             break;
         case 6:
             array_push(L, " lda #0", " sta avis+" + _ts, " rts");
@@ -116,6 +116,12 @@ function cg_do_lines(L, _p, _d, _tag, na)
             break;
         case 16:
             array_push(L, " jmp sfx_stop");
+            break;
+        case 17:
+            array_push(L, " lda #" + string(clamp(_d.value, 0, max(0, array_length(_p.songs) - 1))), " jmp mus_play");
+            break;
+        case 18:
+            array_push(L, " jmp mus_stop");
             break;
         default:
             array_push(L, " rts");
@@ -170,7 +176,6 @@ function codegen_project(_p)
     array_push(L, "ptr = $fb");
     array_push(L, "start:");
     array_push(L, " sei", " cld", " ldx #$ff", " txs");
-    array_push(L, " lda #$ff", " sta $d40e", " sta $d40f", " lda #$80", " sta $d412");
     array_push(L, "restart:");
     array_push(L, " ldx #0", " lda #0");
     array_push(L, "clrv:", " sta vars,x", " inx", " cpx #" + string(_varlen), " bne clrv");
@@ -185,6 +190,8 @@ function codegen_project(_p)
     }
     array_push(L, " inx", " cpx #250", " bne cpy1");
     array_push(L, " jsr sfx_init");
+    // the screen's song (Music page: Where the music plays); one already playing carries on
+    array_push(L, " lda #0", " jsr mus_level");
 
     var _mc = 0;
     for (var a = 0; a < na; a++)
@@ -429,7 +436,7 @@ function codegen_project(_p)
     array_push(L, "add_score:", " sed", " clc", " adc score_lo", " sta score_lo", " txa", " adc score_hi", " sta score_hi", " cld", " bcc as1");
     array_push(L, " lda #$99", " sta score_lo", " sta score_hi", "as1:", " jmp draw_hud");
 
-    array_push(L, "end_screen:", " stx ptr", " sty ptr+1", " jsr sfx_stop", " lda #0", " sta $d015", " ldy #0");
+    array_push(L, "end_screen:", " stx ptr", " sty ptr+1", " jsr sfx_stop", " jsr mus_stop", " lda #0", " sta $d015", " ldy #0");
     array_push(L, "es1:", " lda (ptr),y", " cmp #$ff", " beq es2", " sta $0400+480,y", " lda #1", " sta $d800+480,y", " iny", " bne es1", "es2:");
     array_push(L, "es3:", " lda $dc00", " and #16", " beq es3");
     array_push(L, "es4:", " lda $dc00", " and #16", " bne es4");
@@ -489,6 +496,8 @@ function codegen_project(_p)
     for (var sr = 0; sr < 25; sr++) { array_push(L, " .byte " + cg_join_bytes(_p.chars, sr * 40, 40)); }
     array_push(L, "col_data:");
     for (var cr = 0; cr < 25; cr++) { array_push(L, " .byte " + cg_join_bytes(_p.cols, cr * 40, 40)); }
+    // the music driver and songs go last: they can be big and the VIC-II doesn't need to see them
+    music_emit(L, _p);
 
     return { src : string_join_ext("\n", L), warnings : _warn, lines : L, marks : _marks };
 }
@@ -512,6 +521,12 @@ function build_prg(_path)
     {
         build_ok = false;
         build_msg = "Build failed - the code is too long: the sprites would end at $" + string_upper(dec_to_hex(_spr + SPR_COUNT * 64)) + ", past $4000 where the VIC-II can see them. Use fewer rules or switch a group off.";
+        return false;
+    }
+    if (_end > C64_BASIC_END)
+    {
+        build_ok = false;
+        build_msg = "Build failed - the game is too big: it ends at $" + string_upper(dec_to_hex(_end)) + ", past $A000 where the BASIC ROM starts. Make the songs shorter or use fewer loops.";
         return false;
     }
     var _b = buffer_create(array_length(_res.bytes) + 2, buffer_fixed, 1);

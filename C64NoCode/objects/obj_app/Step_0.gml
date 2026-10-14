@@ -51,6 +51,9 @@ shortcuts_step();
 // code previewer + memory bar: build again a moment after a change, never mid-stroke
 live_step();
 
+// music preview: keep its audio queue fed
+music_preview_step();
+
 var _cap = "C64 No-Code Studio - " + proj.name;
 if (proj_dirty) { _cap += " *"; }
 if (_cap != caption_last)

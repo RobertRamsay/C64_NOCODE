@@ -66,6 +66,8 @@ function live_measure()
         var _ss = live_label(_lab, "sid_start", _org);
         var _se = live_label(_lab, "sid_end", _ss);
         live_seg_sound = _se - _ss;
+        var _ms = live_label(_lab, "mus_start", _org);
+        live_seg_music = live_label(_lab, "mus_end", _ms) - _ms;
         if (proj.game_type == 1)
         {
             // engine and code, then the level data (tiles, enemies, maps - the sound tables are in it), then sprites + charset
@@ -74,7 +76,7 @@ function live_measure()
             live_seg_code = _ld - _org;
             live_seg_gap = 0;
             live_seg_sprites = live_end - _ds;
-            live_seg_data = max(0, _ds - _ld - live_seg_sound);
+            live_seg_data = max(0, _ds - _ld - live_seg_sound - live_seg_music);
             live_limit = 32768;
             live_spr_end = 0;
         }
@@ -85,7 +87,7 @@ function live_measure()
             live_seg_code = _ve - _org - live_seg_sound;
             live_seg_gap = _sp - _ve;
             live_seg_sprites = SPR_COUNT * 64;
-            live_seg_data = live_end - _sp - live_seg_sprites;
+            live_seg_data = max(0, live_end - _sp - live_seg_sprites - live_seg_music);
             live_limit = C64_BASIC_END;
             live_spr_end = _sp + live_seg_sprites;
         }
@@ -126,9 +128,11 @@ function mem_bar_draw(_x, _y, _w, _h)
     if (live_ok)
     {
         var _bx = _x + 1;
-        var _parts = [live_seg_code, live_seg_sound, live_seg_gap, live_seg_sprites, live_seg_data];
-        var _top = [global.TH.accent, global.TH.warn, global.TH.text_faint, make_colour_rgb(240, 150, 60), global.TH.accent2];
-        for (var i = 0; i < 5; i++)
+        var _parts = [live_seg_code, live_seg_sound, live_seg_gap, live_seg_sprites, live_seg_data, live_seg_music];
+        if (proj.game_type == 1) { _parts = [live_seg_code, live_seg_sound, live_seg_music, live_seg_data, 0, live_seg_sprites]; }
+        var _top = [global.TH.accent, global.TH.warn, global.TH.text_faint, make_colour_rgb(240, 150, 60), global.TH.accent2, make_colour_rgb(186, 120, 232)];
+        if (proj.game_type == 1) { _top = [global.TH.accent, global.TH.warn, make_colour_rgb(186, 120, 232), global.TH.accent2, global.TH.text_faint, make_colour_rgb(240, 150, 60)]; }
+        for (var i = 0; i < 6; i++)
         {
             var _pw = min(_parts[i] / _range * _iw, _x + 1 + _iw - _bx);
             if (_pw >= 1)
@@ -153,8 +157,8 @@ function mem_bar_draw(_x, _y, _w, _h)
     if (!live_ok && live_err != "") { _lab = "Memory  (build error)"; }
     ui_text(_x - 10, _y + _h * 0.5, _lab, global.TH.text_dim, fa_right, fa_middle, global.f_small, 1);
 
-    var _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: code made from your rules. Yellow: the SID sound player and sound tables. Orange: the 32 sprites. Green: the screen and colour data.";
-    if (proj.game_type == 1) { _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: the scrolling engine. Yellow: the SID sound player and sound tables. Green: tiles, enemy types and the level maps. Orange: sprites and the charset."; }
+    var _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: code made from your rules. Yellow: the SID sound player and sound tables. Orange: the 32 sprites. Green: the screen and colour data. Purple: the music driver and your songs (after the screen data, where they can't push the sprites out of the VIC-II's sight).";
+    if (proj.game_type == 1) { _help = "Memory|How full your C64 program is, measured a moment after each change. Blue: the scrolling engine. Yellow: the SID sound player and sound tables. Purple: the music driver and songs. Green: tiles, enemy types and the level maps. Orange: sprites and the charset."; }
     if (proj.game_type == 0)
     {
         _help += " The full bar is the 38911 bytes BASIC leaves free ($0801-$9FFF). Grey is a gap: the VIC-II chip sees the character ROM at $1000-$1FFF, so sprites start at $2000. The red tick is $3800 - code past it pushes the sprites beyond $4000, where the VIC-II cannot see them.";

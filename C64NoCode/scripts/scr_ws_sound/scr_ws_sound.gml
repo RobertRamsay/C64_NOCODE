@@ -45,7 +45,7 @@ function ws_sound_draw(_x1, _y1, _x2, _y2)
     {
         var _vst = BTN_GHOST;
         if (_s.voice == vo) { _vst = BTN_ACCENT; }
-        if (ui_button("snd_voice_" + string(vo), _ax + _half + 12 + vo * (_vw + 6), _y + 18, _vw, 32, string(vo + 1), "SID voice " + string(vo + 1) + "|The SID has 3 voices. Sounds play on voice 1 or 2 - put sounds that should play together (a shot and an explosion) on different voices. Voice 3 makes the game's random numbers, so it is never heard.", _vst))
+        if (ui_button("snd_voice_" + string(vo), _ax + _half + 12 + vo * (_vw + 6), _y + 18, _vw, 32, string(vo + 1), "SID voice " + string(vo + 1) + "|The SID has 3 voices. Sounds play on voice 1 or 2 - put sounds that should play together (a shot and an explosion) on different voices. While a sound plays it borrows its voice from the music, which carries on when it ends. Voice 3 is the music's alone.", _vst))
         {
             set_val(_s, "voice", vo, "sndvoice" + string(current_time));
         }
@@ -492,6 +492,7 @@ function sound_delete(_k)
     var _name = proj.sfx[_k].name;
     array_delete(proj.sfx, _k, 1);
     sfx_refs_shift(_k + 1, -1);
+    music_sound_deleted(_k);
     snd_sel = clamp(_k, 0, array_length(proj.sfx) - 1);
     toast("Deleted " + _name, 0);
 }

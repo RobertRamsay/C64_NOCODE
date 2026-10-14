@@ -1,6 +1,11 @@
 /// Free everything
 
 sfx_preview_stop();
+music_preview_stop();
+for (var mb = 0; mb < array_length(mus_bufs); mb++)
+{
+    if (buffer_exists(mus_bufs[mb])) { buffer_delete(mus_bufs[mb]); }
+}
 if (u64_buffer != -1) { buffer_delete(u64_buffer); }
 spr_cache_free();
 if (pchars_sprite != -1 && sprite_exists(pchars_sprite)) { sprite_delete(pchars_sprite); }

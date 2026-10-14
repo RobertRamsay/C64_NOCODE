@@ -1,7 +1,7 @@
 /// C64 NO-CODE STUDIO - SID sound effects: data model, presets, preview synth and the 6502 player
 /// One player is used by both kinds of game (single screen codegen and the map engine).
-/// Sounds play on SID voice 1 or 2. Voice 3 is kept for the random numbers ($D41B), so it is
-/// never heard ($D418 bit 7 = 3OFF). The player runs once a frame (50 Hz PAL, 60 Hz NTSC).
+/// Sounds play on SID voice 1 or 2, borrowing it from the music while they play; voice 3 is the
+/// music's alone (scr_music). The player runs once a frame (50 Hz PAL, 60 Hz NTSC).
 
 #macro SFX_MAX 32
 #macro SID_CLOCK_PAL 985248
@@ -369,7 +369,8 @@ function sfx_key(_s)
 
 /// Pushes the sound tables, the player and its variables onto L.
 /// play_sfx: A = sound number (anything >= the number of sounds plays nothing). X and Y are kept.
-/// sfx_update: once a frame. sfx_stop: silences both voices. sfx_init: once at start.
+/// sfx_update: once a frame (it runs the music driver too). sfx_stop: silences both voices. sfx_init: once at start.
+/// rnd: a random byte in A.
 function sid_emit(L, _p)
 {
     var _ns = max(1, min(SFX_MAX, array_length(_p.sfx)));
@@ -394,7 +395,7 @@ function sid_emit(L, _p)
         _pwh += _sep + string(_pw >> 8);
         _pws += _sep + string(clamp(_s.pws, -64, 64) & 255);
         var _mode = 0;
-        if (_s.fmode > 0) { _mode = 0x8f | (8 << clamp(_s.fmode, 1, 3)); }   // LP $10, BP $20, HP $40 + 3OFF + volume 15
+        if (_s.fmode > 0) { _mode = 0x0f | (8 << clamp(_s.fmode, 1, 3)); }   // LP $10, BP $20, HP $40 + volume 15 (voice 3 stays on: it plays music)
         _fm += _sep + string(_mode);
         _fr += _sep + string(clamp(_s.fres, 0, 15) << 4);
         _fc += _sep + string(clamp(_s.fcut, 0, 255));
@@ -418,10 +419,10 @@ function sid_emit(L, _p)
         _arp_on += string(_sa);
     }
 
-    array_push(L, "; ---------------- SID sound player (voices 1 and 2; voice 3 = random numbers) ----------------");
+    array_push(L, "; ---------------- SID sound player (voices 1 and 2; the music driver has all 3 when they are free) ----------------");
     array_push(L, "SFX_N = " + string(_ns));
     array_push(L, "sid_start:");
-    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$8f", " sta $d418", " rts");
+    array_push(L, "sfx_init:", " lda #0", " sta $d417", " sta sid_d417", " sta sv_t", " sta sv_t+7", " sta flt_t", " lda #$0f", " sta $d418", " rts");
     array_push(L, "play_sfx:", " cmp #SFX_N", " bcc sidp_go", " rts");
     array_push(L, "sidp_go:", " stx sid_sx", " sty sid_sy", " tay", " ldx sfxt_v,y");
     array_push(L, " lda #0", " sta sv_t,x", " sta $d404,x", " sta $d400,x", " sta sv_step,x");
@@ -443,7 +444,7 @@ function sid_emit(L, _p)
     array_push(L, " clc", " adc flt_c", " bcc sidu_fs", " lda #255", " jmp sidu_fs");
     array_push(L, "sidu_fn:", " clc", " adc flt_c", " bcs sidu_fs", " lda #0");
     array_push(L, "sidu_fs:", " sta flt_c", " sta $d416");
-    array_push(L, "sidu_r:", " ldx sid_sx", " ldy sid_sy", " rts");
+    array_push(L, "sidu_r:", " jsr mus_update", " ldx sid_sx", " ldy sid_sy", " rts");
     // one voice: pitch slide (clamped), arpeggio, pulse width sweep, gate off at the end
     array_push(L, "sidu_v:", " lda sv_t,x", " bne sidu_on", " rts");
     array_push(L, "sidu_on:", " lda sv_sw,x", " beq sidu_ps", " bmi sidu_sn");
@@ -462,9 +463,14 @@ function sid_emit(L, _p)
     array_push(L, "sidu_pn:", " clc", " adc sv_pwl,x", " sta sv_pwl,x", " lda sv_pwh,x", " adc #$ff");
     array_push(L, "sidu_pq:", " and #$0f", " sta sv_pwh,x", " sta $d403,x", " lda sv_pwl,x", " sta $d402,x");
     array_push(L, "sidu_np:", " dec sv_t,x", " bne sidu_x", " lda sv_w,x", " and #$fe", " sta $d404,x");
+    // the sound is done: its voice leaves the filter (the music gets it back clean)
+    array_push(L, " lda sid_d417", " and sid_vmask,x", " sta sid_d417", " sta $d417");
     array_push(L, "sidu_x:", " rts");
     array_push(L, "sfx_stop:", " lda #0", " sta sv_t", " sta sv_t+7", " sta flt_t", " sta $d404", " sta $d40b", " rts");
 
+    // rnd: a random byte in A (16-bit LFSR mixed with the raster line; X and Y kept).
+    // The SID's voice 3 noise ($D41B) can't be used: voice 3 plays music.
+    array_push(L, "rnd:", " lda rnd_s", " asl", " rol rnd_s+1", " bcc sidr_n", " eor #$39", "sidr_n:", " sta rnd_s", " eor rnd_s+1", " eor $d012", " rts");
     array_push(L, "sid_vbit:", " .byte 1,0,0,0,0,0,0,2");
     array_push(L, "sid_vmask:", " .byte $fe,0,0,0,0,0,0,$fd");
     array_push(L, "sfxt_v:", " .byte " + _v, "sfxt_ad:", " .byte " + _ad, "sfxt_sr:", " .byte " + _sr);
@@ -475,6 +481,6 @@ function sid_emit(L, _p)
     var _vars = ["sv_t", "sv_fh", "sv_sw", "sv_w", "sv_snd", "sv_step", "sv_pwl", "sv_pwh", "sv_pws"];
     for (var k = 0; k < array_length(_vars); k++) { array_push(L, _vars[k] + ":", " .fill 8,0"); }
     array_push(L, "flt_c:", " .fill 1,0", "flt_s:", " .fill 1,0", "flt_t:", " .fill 1,0", "sid_d417:", " .fill 1,0");
-    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0");
+    array_push(L, "sid_sx:", " .fill 1,0", "sid_sy:", " .fill 1,0", "rnd_s:", " .byte $5a,$c3");
     array_push(L, "sid_end:");
 }

@@ -480,7 +480,7 @@ function ws_world_draw(_x1, _y1, _x2, _y2)
     var _bw = _x2 - _cx - 40;
     ui_text_wrap(_x, _y, "Each frame the C64 has about 18,000 free CPU cycles. Scrolling moves every character in the window once per 8 pixels; that frame is the busiest.", global.TH.text_dim, _bw, global.f_small, 1);
     _y += 66;
-    ui_register("w_meter", _x, _y, _x + _bw, _y + 90, "Cycle meter|Blue is the scroll shift on its busiest frame, green is game logic, the white line is the frame limit. Over the line the game slows down for one frame every 8 pixels.");
+    ui_register("w_meter", _x, _y, _x + _bw, _y + 90, "Cycle meter|Blue is the scroll shift on its busiest frame, green is game logic (and the music driver, when a level has a song), the white line is the frame limit. Over the line the game slows down for one frame every 8 pixels.");
     ui_inset(_x, _y, _x + _bw, _y + 34, 9);
     var _scale = (_bw - 8) / 24000;
     var _sw = min(_bw - 8, _bud.shift * _scale);

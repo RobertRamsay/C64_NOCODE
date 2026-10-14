@@ -175,6 +175,39 @@ preview_start = 0;
 preview_len_ms = 0;
 preview_key = "";
 preview_scope = [];
+// Music page (scr_ws_music) and its preview player (scr_music)
+mus_song = 0;
+mus_cat = 0;
+mus_brush_src = 0;
+mus_brush = 0;
+mus_edit = -1;
+mus_edit_lane = -1;
+mus_edit_bar = -1;
+mus_edit_step = -1;
+mus_xoff = 0;
+mus_range = 2;
+mus_from = 0;
+mus_paint = 0;
+mus_paint_cell = "";
+mus_paint_tag = "";
+mus_grid_mode = 0;
+mus_click_t = 0;
+mus_click_key = "";
+mus_roll_base = 13;
+mus_edit_seen = "";
+mus_roll_drag = -1;
+mus_roll_tag = "";
+mus_note_len = 2;
+mus_pl = undefined;
+mus_queue = -1;
+mus_inst = -1;
+mus_bufs = [];
+mus_marks = [];
+mus_rendered = 0;
+mus_playing = false;
+mus_play_what = "";
+mus_started = 0;
+mus_old_bufs_time = 0;
 
 // logic + code previewer
 logic_sel = -1;
@@ -204,6 +237,7 @@ live_seg_sound = 0;
 live_seg_gap = 0;
 live_seg_sprites = 0;
 live_seg_data = 0;
+live_seg_music = 0;
 
 // C64 Ultimate on the network
 u64_ip = "";
